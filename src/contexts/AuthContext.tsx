@@ -6,8 +6,8 @@ interface AuthContextType {
   user: User | null;
   session: Session | null;
   loading: boolean;
-  signUp: (email: string, password: string, displayName?: string) => Promise<{ error: any }>;
-  signIn: (email: string, password: string) => Promise<{ error: any }>;
+  signUp: (email: string, password: string, displayName?: string) => Promise<{ error: unknown }>;
+  signIn: (email: string, password: string) => Promise<{ error: unknown }>;
   signOut: () => Promise<void>;
 }
 
@@ -30,6 +30,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Set up auth state listener FIRST
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
+        console.log("session", session);
+        console.log("event", event);
         setSession(session);
         setUser(session?.user ?? null);
         setLoading(false);
@@ -48,8 +50,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const signUp = async (email: string, password: string, displayName?: string) => {
     const redirectUrl = `${window.location.origin}/`;
-    
-    const { error } = await supabase.auth.signUp({
+    console.log("email redirect", redirectUrl);
+
+    const { error, data } = await supabase.auth.signUp({
       email,
       password,
       options: {
@@ -57,7 +60,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         data: displayName ? { display_name: displayName } : undefined
       }
     });
-    
+
+    console.log("error", error);
+    console.log("data", data);
+
     return { error };
   };
 
@@ -66,7 +72,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       email,
       password,
     });
-    
+
     return { error };
   };
 

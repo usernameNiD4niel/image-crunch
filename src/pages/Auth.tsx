@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Navigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -13,7 +13,7 @@ const Auth = () => {
   const { user, signIn, signUp } = useAuth();
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
-  
+
   // Form states
   const [signInData, setSignInData] = useState({ email: '', password: '' });
   const [signUpData, setSignUpData] = useState({ email: '', password: '', displayName: '' });
@@ -29,7 +29,7 @@ const Auth = () => {
 
     try {
       const { error } = await signIn(signInData.email, signInData.password);
-      
+
       if (error) {
         toast({
           title: "Sign in failed",
@@ -59,7 +59,7 @@ const Auth = () => {
 
     try {
       const { error } = await signUp(signUpData.email, signUpData.password, signUpData.displayName);
-      
+
       if (error) {
         if (error.message.includes('User already registered')) {
           toast({
@@ -122,7 +122,7 @@ const Auth = () => {
                 <TabsTrigger value="signin">Sign In</TabsTrigger>
                 <TabsTrigger value="signup">Sign Up</TabsTrigger>
               </TabsList>
-              
+
               <TabsContent value="signin">
                 <form onSubmit={handleSignIn} className="space-y-4">
                   <div className="space-y-2">
@@ -152,7 +152,7 @@ const Auth = () => {
                   </Button>
                 </form>
               </TabsContent>
-              
+
               <TabsContent value="signup">
                 <form onSubmit={handleSignUp} className="space-y-4">
                   <div className="space-y-2">
