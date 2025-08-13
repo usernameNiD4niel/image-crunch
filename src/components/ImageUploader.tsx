@@ -11,20 +11,20 @@ interface ImageUploaderProps {
   maxFileSize?: number;
 }
 
-export const ImageUploader: React.FC<ImageUploaderProps> = ({ 
-  onImageUpload, 
-  maxFileSize = 10 * 1024 * 1024 // 10MB
+export const ImageUploader: React.FC<ImageUploaderProps> = ({
+  onImageUpload,
+  maxFileSize = 35 * 1024 * 1024 // 10MB
 }) => {
   const [error, setError] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
 
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
     setError('');
-    
+
     if (acceptedFiles.length === 0) return;
-    
+
     const file = acceptedFiles[0];
-    
+
     // Validate file size
     if (file.size > maxFileSize) {
       setError(`File size must be less than ${Math.round(maxFileSize / (1024 * 1024))}MB`);
@@ -38,11 +38,11 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
     }
 
     setIsLoading(true);
-    
+
     try {
       const dimensions = await getImageDimensions(file);
       const url = URL.createObjectURL(file);
-      
+
       const imageInfo: ImageInfo = {
         file,
         url,
@@ -51,7 +51,7 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
         width: dimensions.width,
         height: dimensions.height
       };
-      
+
       onImageUpload(imageInfo);
     } catch (err) {
       setError('Failed to process image. Please try again.');
@@ -82,7 +82,7 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
             `}
           >
             <input {...getInputProps()} />
-            
+
             <div className="flex flex-col items-center gap-4">
               {isLoading ? (
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
@@ -95,7 +95,7 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
                   )}
                 </div>
               )}
-              
+
               <div className="space-y-2">
                 <h3 className="text-lg font-semibold">
                   {isLoading ? 'Processing...' : isDragActive ? 'Drop your image here' : 'Upload an image'}
@@ -107,7 +107,7 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
                   Supports: JPG, PNG, WebP, SVG, GIF, ICO
                 </p>
               </div>
-              
+
               {!isLoading && (
                 <Button variant="outline" className="mt-2">
                   Choose File
@@ -115,7 +115,7 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
               )}
             </div>
           </div>
-          
+
           {error && (
             <Alert variant="destructive" className="mt-4">
               <AlertCircle className="h-4 w-4" />
