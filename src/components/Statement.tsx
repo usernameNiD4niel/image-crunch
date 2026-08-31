@@ -2,7 +2,7 @@ export function Statement() {
   return (
     <section className="mx-auto grid min-h-[calc(100dvh-3rem)] max-w-[1440px] grid-cols-1 content-center gap-12 px-6 pt-12 md:grid-cols-12">
       <div className="md:col-span-8">
-        <h1 className="display">
+        <h1 className="display -ml-[0.055em]">
           Smaller
           <br />
           files.
@@ -12,9 +12,15 @@ export function Statement() {
           picture.
         </h1>
 
+        {/* Ink, not --signal. Signal marks exactly the live savings figure,
+            the quality track fill and the primary download action; a scroll
+            link to the tool is none of those, and spending the page's one
+            colour here left the download action competing with it. Above the
+            fold the page is now pure monochrome — uploaded images supply all
+            the colour the page ever has. */}
         <a
           href="#tool"
-          className="mt-10 inline-block bg-signal px-6 py-3 text-signal-ink transition-opacity duration-[140ms] ease-[var(--ease)] hover:opacity-90"
+          className="mt-10 inline-block border border-ink bg-ink px-6 py-3 text-paper transition-colors duration-[140ms] ease-[var(--ease)] hover:bg-paper hover:text-ink"
         >
           <span className="label">Start ↓</span>
         </a>

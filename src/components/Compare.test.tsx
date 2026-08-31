@@ -53,7 +53,7 @@ describe("Compare", () => {
     render(<Compare item={item()} result={result()} />);
     expect(URL.createObjectURL).toHaveBeenCalledTimes(1);
 
-    const divider = screen.getByLabelText("Comparison position");
+    const divider = screen.getByLabelText("Divider");
     fireEvent.change(divider, { target: { value: "30" } });
     fireEvent.change(divider, { target: { value: "70" } });
 
@@ -75,10 +75,14 @@ describe("Compare", () => {
     expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:output-a");
   });
 
-  it("exposes the divider as a real, keyboard-operable range slider with an accessible name", () => {
+  // jsdom cannot exercise real arrow-key handling on a range input, so this
+  // asserts the divider IS a native range input with a name and bounds — the
+  // thing that makes it keyboard-operable in a browser — rather than claiming
+  // to have driven it from the keyboard.
+  it("renders the divider as a native range input with an accessible name and 0-100 bounds", () => {
     render(<Compare item={item()} result={result()} />);
 
-    const divider = screen.getByLabelText("Comparison position") as HTMLInputElement;
+    const divider = screen.getByLabelText("Divider") as HTMLInputElement;
     expect(divider.type).toBe("range");
     expect(divider.min).toBe("0");
     expect(divider.max).toBe("100");
@@ -98,7 +102,7 @@ describe("Compare", () => {
   it("does not render the compressed image layer at split=0, avoiding a divide-by-zero width", () => {
     render(<Compare item={item()} result={result()} />);
 
-    const divider = screen.getByLabelText("Comparison position");
+    const divider = screen.getByLabelText("Divider");
     fireEvent.change(divider, { target: { value: "0" } });
 
     expect(screen.queryByAltText(/Compressed/)).toBeNull();

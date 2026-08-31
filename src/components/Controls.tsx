@@ -29,6 +29,51 @@ function segmentButtonClass(selected: boolean) {
   }`;
 }
 
+/**
+ * One labelled radiogroup of segmented buttons. Resize and Format are the
+ * same control with different options; writing them twice meant two places
+ * to keep the label wiring, the roles and the selected styling in step.
+ */
+function SegmentedField<T>({
+  id,
+  label,
+  options,
+  value,
+  onSelect,
+  className,
+}: {
+  id: string;
+  label: string;
+  options: { value: T; label: string }[];
+  value: T;
+  onSelect: (value: T) => void;
+  className?: string;
+}) {
+  return (
+    <Field className={className}>
+      <FieldLabel id={`${id}-label`} className="label text-ink-60">
+        {label}
+      </FieldLabel>
+      <FieldContent>
+        <ButtonGroup role="radiogroup" aria-labelledby={`${id}-label`} className="mt-2 gap-2">
+          {options.map((option) => (
+            <button
+              key={String(option.value)}
+              type="button"
+              role="radio"
+              aria-checked={value === option.value}
+              onClick={() => onSelect(option.value)}
+              className={segmentButtonClass(value === option.value)}
+            >
+              {option.label}
+            </button>
+          ))}
+        </ButtonGroup>
+      </FieldContent>
+    </Field>
+  );
+}
+
 export function Controls({ settings, onChange, onDownloadAll, disabled }: ControlsProps) {
   return (
     <div className="sticky bottom-0 z-40 border-t border-ink bg-paper py-4">
@@ -63,57 +108,23 @@ export function Controls({ settings, onChange, onDownloadAll, disabled }: Contro
           </FieldContent>
         </Field>
 
-        <Field className="md:col-span-3">
-          <FieldLabel id="resize-label" className="label text-ink-60">
-            Resize
-          </FieldLabel>
-          <FieldContent>
-            <ButtonGroup
-              role="radiogroup"
-              aria-labelledby="resize-label"
-              className="mt-2 gap-2"
-            >
-              {RESIZES.map((r) => (
-                <button
-                  key={String(r.value)}
-                  type="button"
-                  role="radio"
-                  aria-checked={settings.resize === r.value}
-                  onClick={() => onChange({ resize: r.value })}
-                  className={segmentButtonClass(settings.resize === r.value)}
-                >
-                  {r.label}
-                </button>
-              ))}
-            </ButtonGroup>
-          </FieldContent>
-        </Field>
+        <SegmentedField
+          id="resize"
+          label="Resize"
+          options={RESIZES}
+          value={settings.resize}
+          onSelect={(resize) => onChange({ resize })}
+          className="md:col-span-3"
+        />
 
-        <Field className="md:col-span-3">
-          <FieldLabel id="format-label" className="label text-ink-60">
-            Format
-          </FieldLabel>
-          <FieldContent>
-            <ButtonGroup
-              role="radiogroup"
-              aria-labelledby="format-label"
-              className="mt-2 gap-2"
-            >
-              {FORMATS.map((f) => (
-                <button
-                  key={f.value}
-                  type="button"
-                  role="radio"
-                  aria-checked={settings.format === f.value}
-                  onClick={() => onChange({ format: f.value })}
-                  className={segmentButtonClass(settings.format === f.value)}
-                >
-                  {f.label}
-                </button>
-              ))}
-            </ButtonGroup>
-          </FieldContent>
-        </Field>
+        <SegmentedField
+          id="format"
+          label="Format"
+          options={FORMATS}
+          value={settings.format}
+          onSelect={(format) => onChange({ format })}
+          className="md:col-span-3"
+        />
 
         <div className="md:col-span-2 md:justify-self-end">
           <button

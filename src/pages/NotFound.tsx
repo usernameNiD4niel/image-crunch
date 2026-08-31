@@ -1,27 +1,21 @@
-import { useLocation } from "react-router-dom";
-import { useEffect } from "react";
-
-const NotFound = () => {
-  const location = useLocation();
-
-  useEffect(() => {
-    console.error(
-      "404 Error: User attempted to access non-existent route:",
-      location.pathname
-    );
-  }, [location.pathname]);
-
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100">
-      <div className="text-center">
-        <h1 className="text-4xl font-bold mb-4">404</h1>
-        <p className="text-xl text-gray-600 mb-4">Oops! Page not found</p>
-        <a href="/" className="text-blue-500 hover:text-blue-700 underline">
-          Return to Home
-        </a>
-      </div>
-    </div>
-  );
-};
+const NotFound = () => (
+  <main className="mx-auto flex min-h-dvh max-w-[1440px] flex-col justify-center px-6">
+    <p className="data text-ink-38">404</p>
+    <h1 className="display mt-4 -ml-[0.055em]">
+      No such
+      <br />
+      page.
+    </h1>
+    <p className="mt-8 max-w-[42ch] text-ink-60">
+      Nothing lives at this address. The compressor is one link away.
+    </p>
+    <a
+      href="/"
+      className="label mt-8 inline-block self-start border border-ink bg-ink px-6 py-3 text-paper transition-colors duration-[140ms] ease-[var(--ease)] hover:bg-paper hover:text-ink"
+    >
+      ← Image Crunch
+    </a>
+  </main>
+);
 
 export default NotFound;

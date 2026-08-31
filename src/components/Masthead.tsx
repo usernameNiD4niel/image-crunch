@@ -21,9 +21,17 @@ export function Masthead({ count, working, errors, totals, onDownloadAll }: Mast
             <span className="text-ink-60">IDLE · 0 FILES</span>
           ) : totals.count > 0 ? (
             <>
-              <span className="text-ink-60">
+              {/* Below 768px only the percentage and the action survive — the
+                  masthead is 48px tall and the byte figures are the first
+                  thing that can be dropped without losing the headline fact. */}
+              <span className="hidden text-ink-60 md:inline">
                 {totals.count} FILES · {formatBytes(totals.input)} → {formatBytes(totals.output)}
               </span>
+              {/* Completed work must not hide failed work: a queue that
+                  finished some files and failed others used to report only
+                  the successes. Kept outside the md-only span so the failure
+                  count survives the mobile truncation. */}
+              {errors > 0 && <span className="text-ink-60">{errors} FAILED</span>}
               <span className={totals.percent >= 0 ? "text-signal" : "text-ink-60"}>
                 {formatPercent(totals.percent)}
               </span>

@@ -14,9 +14,13 @@ export function Queue({ items, totals, onDownloadOne, onRemove }: QueueProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   return (
-    <section>
+    <section aria-labelledby="queue-heading">
       <div className="flex items-baseline justify-between border-b border-ink pb-2">
-        <span className="label">Queue</span>
+        {/* A real h2, styled as a label: the queue is a section of the page
+            and belongs in the heading outline under the h1 statement. */}
+        <h2 id="queue-heading" className="label">
+          Queue
+        </h2>
         <span className="data text-[0.8125rem] text-ink-60">{items.length} FILES</span>
       </div>
 

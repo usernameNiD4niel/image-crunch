@@ -42,7 +42,15 @@ export function DropZone({ onFiles, compact = false }: DropZoneProps) {
 
       onFiles(ok, screeningMessage);
       if (ok.length) {
-        document.getElementById("tool")?.scrollIntoView({ behavior: "smooth" });
+        // The CSS reduced-motion block cannot reach a scroll this code
+        // asks for by name: `behavior: "smooth"` is a JS argument, not a
+        // transition. Ask for it only when motion is welcome.
+        const reduced =
+          typeof window.matchMedia === "function" &&
+          window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        document
+          .getElementById("tool")
+          ?.scrollIntoView({ behavior: reduced ? "auto" : "smooth" });
       }
     },
     [onFiles],
@@ -103,6 +111,7 @@ export function DropZone({ onFiles, compact = false }: DropZoneProps) {
         tabIndex={0}
         onClick={openPicker}
         onKeyDown={onKeyDown}
+        aria-label="Add more images"
         className={`mt-6 flex w-full items-baseline justify-between border px-6 py-4 text-left transition-colors duration-[140ms] ease-[var(--ease)] focus-visible:ring-0 ${
           active ? "border-ink bg-paper-2" : "border-rule bg-paper-2"
         }`}

@@ -57,8 +57,11 @@ export function Compare({ item, result }: CompareProps) {
         />
       </div>
 
+      {/* The visible label IS the accessible name — there is no separate
+          aria-label, so a sighted user and a screen-reader user call this
+          control the same thing. */}
       <label className="label mt-3 block text-ink-60" htmlFor={`split-${item.id}`}>
-        Compare
+        Divider
       </label>
       {/*
         A plain range input, not the shared <Slider>: Slider's Indicator is
@@ -78,7 +81,6 @@ export function Compare({ item, result }: CompareProps) {
         value={split}
         onChange={(e) => setSplit(Number(e.target.value))}
         className="w-full accent-[var(--ink)]"
-        aria-label="Comparison position"
       />
 
       <div className="data mt-2 flex justify-between text-[0.8125rem] text-ink-60">

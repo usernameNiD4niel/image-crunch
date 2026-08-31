@@ -41,6 +41,21 @@ describe("Masthead", () => {
     expect(screen.getByText("2 FILES · 2 FAILED")).toBeTruthy();
   });
 
+  it("still reports failures once some files have completed", () => {
+    render(
+      <Masthead
+        count={3}
+        working={0}
+        errors={1}
+        totals={totalsOf({ count: 2, input: 100, output: 40, percent: 60 })}
+        onDownloadAll={() => {}}
+      />,
+    );
+    // The completed summary must not swallow the failures.
+    expect(screen.getByText("1 FAILED")).toBeTruthy();
+    expect(screen.getByText("−60.0%")).toBeTruthy();
+  });
+
   it("shows a minus sign for a positive saving", () => {
     render(
       <Masthead

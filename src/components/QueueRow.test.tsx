@@ -84,6 +84,25 @@ describe("QueueRow", () => {
     expect(screen.queryByText(/−-/)).toBeNull();
   });
 
+  it("names the file in every glyph-only row action", () => {
+    render(
+      <QueueRow
+        index={0}
+        item={baseItem({ status: "queued" })}
+        expanded={false}
+        onToggle={noop}
+        onDownload={noop}
+        onRemove={noop}
+      />,
+    );
+
+    // "⌄ ↓ ×" carry no text; with 30 rows a screen reader would otherwise
+    // hear the same three names thirty times over.
+    expect(screen.getByLabelText("Compare photo.png")).toBeTruthy();
+    expect(screen.getByLabelText("Download photo.png")).toBeTruthy();
+    expect(screen.getByLabelText("Remove photo.png")).toBeTruthy();
+  });
+
   it("shows a spinner and encoding label while a row is working, with no result yet", () => {
     render(
       <QueueRow
@@ -101,7 +120,7 @@ describe("QueueRow", () => {
     // Row index is 1-based and zero-padded.
     expect(screen.getByText("03")).toBeTruthy();
     // No result yet, so download must be disabled.
-    expect((screen.getByLabelText("Download") as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByLabelText("Download photo.png") as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("does not render the Compare panel when expanded but no result exists yet", () => {
@@ -116,7 +135,7 @@ describe("QueueRow", () => {
       />,
     );
 
-    expect(screen.queryByLabelText("Comparison position")).toBeNull();
+    expect(screen.queryByLabelText("Divider")).toBeNull();
   });
 
   it("does not render the Compare panel when a result exists but the row is collapsed", () => {
@@ -134,7 +153,7 @@ describe("QueueRow", () => {
       />,
     );
 
-    expect(screen.queryByLabelText("Comparison position")).toBeNull();
+    expect(screen.queryByLabelText("Divider")).toBeNull();
   });
 
   it("renders the Compare panel only when expanded AND a result exists", () => {
@@ -152,6 +171,6 @@ describe("QueueRow", () => {
       />,
     );
 
-    expect(screen.getByLabelText("Comparison position")).toBeTruthy();
+    expect(screen.getByLabelText("Divider")).toBeTruthy();
   });
 });

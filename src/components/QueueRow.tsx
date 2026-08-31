@@ -22,7 +22,7 @@ export function QueueRow({ index, item, expanded, onToggle, onDownload, onRemove
       render={<li />}
       variant="outline"
       size="sm"
-      className="grid grid-cols-12 items-baseline gap-x-4 gap-y-1 rounded-none border-x-0 border-t-0 border-b border-rule px-0 py-4 focus-visible:border-transparent focus-visible:ring-0"
+      className="grid grid-cols-12 items-baseline gap-x-4 gap-y-1 rounded-none border-x-0 border-t-0 border-b border-rule px-0 py-4 duration-[140ms] ease-[var(--ease)] focus-visible:border-transparent focus-visible:ring-0"
     >
       <span className="data col-span-1 text-ink-38">{String(index + 1).padStart(2, "0")}</span>
 
@@ -64,7 +64,7 @@ export function QueueRow({ index, item, expanded, onToggle, onDownload, onRemove
           type="button"
           onClick={onToggle}
           aria-expanded={expanded}
-          aria-label="Compare"
+          aria-label={`Compare ${item.source.name}`}
           className="focus-visible:ring-0"
         >
           {expanded ? "⌃" : "⌄"}
@@ -73,12 +73,17 @@ export function QueueRow({ index, item, expanded, onToggle, onDownload, onRemove
           type="button"
           onClick={onDownload}
           disabled={!result}
-          aria-label="Download"
+          aria-label={`Download ${item.source.name}`}
           className="focus-visible:ring-0 disabled:text-ink-38"
         >
           ↓
         </button>
-        <button type="button" onClick={onRemove} aria-label="Remove" className="focus-visible:ring-0">
+        <button
+          type="button"
+          onClick={onRemove}
+          aria-label={`Remove ${item.source.name}`}
+          className="focus-visible:ring-0"
+        >
           ×
         </button>
       </ItemActions>
