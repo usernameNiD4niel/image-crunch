@@ -21,6 +21,20 @@ interface Pending {
   resolve: (r: EncodeResult) => void;
   reject: (e: Error) => void;
   generation: number;
+  workerIndex: number;
+}
+
+// A pending entry is keyed by id AND the generation it was dispatched
+// under. Two different dispatches for the same queue item id (an old,
+// now-stale one and a fresh replacement) can be in flight on two
+// different pooled workers at once — each worker tracks staleness
+// against its OWN local generation counter (see worker.ts), so a late
+// reply from the worker that ran the stale dispatch must never be able
+// to resolve/reject the entry created by the fresh dispatch. Composing
+// the key from both fields makes that structurally impossible: a reply
+// can only ever look up the exact entry its own dispatch created.
+function pendingKey(id: string, generation: number): string {
+  return `${id}:${generation}`;
 }
 
 export class EncodeClient {
@@ -28,6 +42,7 @@ export class EncodeClient {
   private next = 0;
   private generation = 0;
   private pending = new Map<string, Pending>();
+  private disposed = false;
   private readonly useWorkers = canUseOffscreen() && typeof Worker !== "undefined";
 
   constructor() {
@@ -37,6 +52,15 @@ export class EncodeClient {
     for (let i = 0; i < size; i += 1) {
       const worker = new Worker(new URL("./worker.ts", import.meta.url), { type: "module" });
       worker.onmessage = (event) => this.handle(event.data);
+      // A native `error` event (module-evaluation failure, a synchronous
+      // throw before worker.ts's try/catch, a structured-clone failure
+      // on postMessage) never produces a done/error message, so handle()
+      // would never run for it. Without this, the entry that dispatch
+      // created sits in `pending` until some FUTURE bumpGeneration
+      // happens to reap it — if the user never changes settings again,
+      // it hangs forever. Reject only THIS worker's pending entries;
+      // other workers' in-flight work is unaffected.
+      worker.onerror = (event) => this.handleWorkerError(i, event);
       this.workers.push(worker);
     }
   }
@@ -50,10 +74,10 @@ export class EncodeClient {
     // receive a "done"/"error" message from the worker, so its promise
     // must be settled here — proactively, not by waiting for a message
     // that will never arrive.
-    for (const [id, entry] of this.pending) {
+    for (const [key, entry] of this.pending) {
       if (entry.generation < this.generation) {
         entry.reject(new StaleResult());
-        this.pending.delete(id);
+        this.pending.delete(key);
       }
     }
 
@@ -66,6 +90,10 @@ export class EncodeClient {
     source: SourceInfo,
     settings: EncodeSettings,
   ): Promise<EncodeResult> {
+    if (this.disposed) {
+      throw new Error("EncodeClient has been disposed");
+    }
+
     const generation = this.generation;
 
     if (!this.useWorkers) {
@@ -74,18 +102,20 @@ export class EncodeClient {
       return result;
     }
 
+    const workerIndex = this.next % this.workers.length;
+    this.next += 1;
+
     return new Promise<EncodeResult>((resolve, reject) => {
-      this.pending.set(id, { resolve, reject, generation });
-      const worker = this.workers[this.next % this.workers.length];
-      this.next += 1;
-      worker.postMessage({ type: "encode", id, generation, file, source, settings });
+      this.pending.set(pendingKey(id, generation), { resolve, reject, generation, workerIndex });
+      this.workers[workerIndex].postMessage({ type: "encode", id, generation, file, source, settings });
     });
   }
 
   private handle(data: { type: string; id: string; generation: number; result?: EncodeResult; message?: string }) {
-    const entry = this.pending.get(data.id);
+    const key = pendingKey(data.id, data.generation);
+    const entry = this.pending.get(key);
     if (!entry) return;
-    this.pending.delete(data.id);
+    this.pending.delete(key);
 
     if (data.generation < this.generation) {
       entry.reject(new StaleResult());
@@ -96,7 +126,20 @@ export class EncodeClient {
     else entry.reject(new Error(data.message ?? "Encoding failed"));
   }
 
+  private handleWorkerError(workerIndex: number, event: ErrorEvent) {
+    event.preventDefault?.();
+    const message = event.message || "Worker encountered an unrecoverable error";
+    for (const [key, entry] of this.pending) {
+      if (entry.workerIndex === workerIndex) {
+        entry.reject(new Error(message));
+        this.pending.delete(key);
+      }
+    }
+  }
+
   dispose(): void {
+    this.disposed = true;
+
     // Never leave a mounted-away caller's promise dangling: settle
     // everything still outstanding before tearing workers down.
     for (const entry of this.pending.values()) {

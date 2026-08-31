@@ -1,12 +1,21 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { EncodeClient, StaleResult, trackUrl, releaseUrl, releaseAll } from "./client";
+import { canUseOffscreen, encodeOne } from "./encode";
+import type { EncodeResult, EncodeSettings, SourceInfo } from "./types";
+
+vi.mock("./encode", () => ({
+  canUseOffscreen: vi.fn(() => false),
+  encodeOne: vi.fn(),
+}));
 
 describe("blob-URL registry", () => {
   beforeEach(() => {
     // jsdom's URL.revokeObjectURL is a no-op stub; spy on it so we can
     // assert it is called the right number of times without depending
-    // on real object-URL semantics.
+    // on real object-URL semantics. Also drain the module-level registry
+    // so tests are not order-dependent on leftovers from a prior test.
     vi.restoreAllMocks();
+    releaseAll();
     vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
   });
 
@@ -41,18 +50,42 @@ describe("blob-URL registry", () => {
   });
 });
 
-describe("EncodeClient generation bookkeeping", () => {
-  // jsdom has neither OffscreenCanvas nor Worker, so the client always
-  // constructs in main-thread-fallback mode here — no real Worker is
-  // ever spun up. That keeps this a thin, honest check of the counter
-  // and lifecycle logic rather than a mock of the worker protocol.
+// ---------------------------------------------------------------------------
+// A minimal message-passing double standing in for the browser Worker. It
+// never touches OffscreenCanvas or produces a real encoded image — it only
+// records postMessage calls and lets a test manually fire onmessage/onerror,
+// which is exactly the seam client.ts owns (message routing and pending-map
+// bookkeeping). This is NOT the kind of worker mock the brief bans (faking
+// that real image encoding happened); encodeOne/canUseOffscreen stay mocked
+// separately and are never asked to pretend they produced real output here.
+// ---------------------------------------------------------------------------
+class FakeWorker {
+  static instances: FakeWorker[] = [];
+  onmessage: ((event: { data: unknown }) => void) | null = null;
+  onerror: ((event: { message?: string; preventDefault?: () => void }) => void) | null = null;
+  postMessage = vi.fn();
+  terminate = vi.fn();
+  constructor() {
+    FakeWorker.instances.push(this);
+  }
+}
 
-  it("bumpGeneration increments and returns the new generation", () => {
-    const client = new EncodeClient();
-    expect(client.bumpGeneration()).toBe(1);
-    expect(client.bumpGeneration()).toBe(2);
-    expect(client.bumpGeneration()).toBe(3);
-    client.dispose();
+const fakeFile = () => new File(["x"], "a.png", { type: "image/png" });
+const fakeSource: SourceInfo = { name: "a.png", type: "image/png", size: 1, width: 10, height: 10 };
+const fakeSettings: EncodeSettings = { quality: 80, resize: "none", format: "keep" };
+const fakeResult = (n: number): EncodeResult => ({
+  blob: new Blob([String(n)]),
+  size: n,
+  width: 10,
+  height: 10,
+  mime: "image/png",
+  keptOriginal: false,
+});
+
+describe("EncodeClient — fallback (main-thread) path", () => {
+  beforeEach(() => {
+    vi.mocked(canUseOffscreen).mockReturnValue(false);
+    vi.mocked(encodeOne).mockReset();
   });
 
   it("dispose is safe to call with nothing pending and safe to call twice", () => {
@@ -65,5 +98,116 @@ describe("EncodeClient generation bookkeeping", () => {
     const err = new StaleResult();
     expect(err).toBeInstanceOf(Error);
     expect(err.name).toBe("StaleResult");
+  });
+
+  it("rejects with StaleResult when bumpGeneration lands while encodeOne is still in flight", async () => {
+    let resolveEncode!: (r: EncodeResult) => void;
+    vi.mocked(encodeOne).mockReturnValue(
+      new Promise<EncodeResult>((resolve) => {
+        resolveEncode = resolve;
+      }),
+    );
+
+    const client = new EncodeClient();
+    const promise = client.encode("id1", fakeFile(), fakeSource, fakeSettings);
+
+    // Settings changed mid-encode.
+    client.bumpGeneration();
+    resolveEncode(fakeResult(1));
+
+    await expect(promise).rejects.toBeInstanceOf(StaleResult);
+  });
+
+  it("encode() after dispose() rejects cleanly instead of throwing from a null worker lookup", async () => {
+    vi.mocked(encodeOne).mockResolvedValue(fakeResult(1));
+    const client = new EncodeClient();
+    client.dispose();
+
+    await expect(client.encode("id1", fakeFile(), fakeSource, fakeSettings)).rejects.toThrow(
+      /disposed/i,
+    );
+  });
+});
+
+describe("EncodeClient — pooled worker path", () => {
+  beforeEach(() => {
+    FakeWorker.instances = [];
+    vi.stubGlobal("Worker", FakeWorker as unknown as typeof Worker);
+    vi.mocked(canUseOffscreen).mockReturnValue(true);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("bumpGeneration settles an in-flight pooled entry with StaleResult without any worker reply", async () => {
+    const client = new EncodeClient();
+    const promise = client.encode("id1", fakeFile(), fakeSource, fakeSettings);
+
+    // No worker ever posts back — this simulates worker.ts's real behavior
+    // of silently dropping a reply for a generation it no longer considers
+    // current. The client must not wait for a message that will never come.
+    client.bumpGeneration();
+
+    await expect(promise).rejects.toBeInstanceOf(StaleResult);
+    client.dispose();
+  });
+
+  it("a stale-generation reply for a given id does not settle or delete a NEWER entry for the same id", async () => {
+    // Pool size is Math.max(1, Math.min(3, hardwareConcurrency || 2)) — at
+    // least 2 workers, so two dispatches for the same id can land on two
+    // different workers, reproducing the Critical-1 trace.
+    const client = new EncodeClient();
+    expect(FakeWorker.instances.length).toBeGreaterThanOrEqual(2);
+
+    // 1) encode("x") at generation 0 -> dispatched to worker 0.
+    const stalePromise = client.encode("x", fakeFile(), fakeSource, fakeSettings);
+    const workerForStale = FakeWorker.instances[0];
+
+    // 2) Settings change: generation 0 is now stale. The client proactively
+    // rejects the entry for the stale dispatch.
+    client.bumpGeneration();
+    await expect(stalePromise).rejects.toBeInstanceOf(StaleResult);
+
+    // 3) A fresh encode("x") at generation 1 -> dispatched to worker 1.
+    const freshPromise = client.encode("x", fakeFile(), fakeSource, fakeSettings);
+    const workerForFresh = FakeWorker.instances[1];
+    expect(workerForFresh).not.toBe(workerForStale);
+
+    // 4) Worker 0 (the stale one) only now gets around to posting its
+    // generation-0 result for id "x" — late, out of band, after the fresh
+    // dispatch for the same id is already in flight.
+    workerForStale.onmessage?.({
+      data: { type: "done", id: "x", generation: 0, result: fakeResult(0) },
+    });
+
+    // 5) Worker 1 posts the real, current result for the fresh dispatch.
+    workerForFresh.onmessage?.({
+      data: { type: "done", id: "x", generation: 1, result: fakeResult(1) },
+    });
+
+    // The fresh promise must resolve with the fresh result — the late,
+    // stale-generation reply from worker 0 must not have touched it.
+    await expect(freshPromise).resolves.toEqual(fakeResult(1));
+    client.dispose();
+  });
+
+  it("a native worker error rejects only that worker's own pending entries", async () => {
+    const client = new EncodeClient();
+    expect(FakeWorker.instances.length).toBeGreaterThanOrEqual(2);
+
+    const p0 = client.encode("a", fakeFile(), fakeSource, fakeSettings); // worker 0
+    const p1 = client.encode("b", fakeFile(), fakeSource, fakeSettings); // worker 1
+
+    FakeWorker.instances[0].onerror?.({ message: "boom", preventDefault: () => {} });
+
+    await expect(p0).rejects.toThrow(/boom/);
+
+    // The other worker's pending work must be unaffected.
+    FakeWorker.instances[1].onmessage?.({
+      data: { type: "done", id: "b", generation: 0, result: fakeResult(2) },
+    });
+    await expect(p1).resolves.toEqual(fakeResult(2));
+    client.dispose();
   });
 });
