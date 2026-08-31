@@ -2,6 +2,7 @@ import type { QueueItem } from "@/lib/engine/types";
 import { formatBytes, formatPercent, savingsPercent } from "@/lib/engine/plan";
 import { Item, ItemActions } from "@/components/ui/item";
 import { Spinner } from "@/components/ui/spinner";
+import { Compare } from "@/components/Compare";
 
 interface QueueRowProps {
   index: number;
@@ -12,10 +13,6 @@ interface QueueRowProps {
   onRemove: () => void;
 }
 
-// NOTE: the Compare panel (Task 12) is not wired in yet — `expanded` and
-// `onToggle` are kept so the expand affordance and its aria-expanded state
-// are already in place, but nothing renders below the row until Compare
-// exists. Compare.tsx does not exist as of this task.
 export function QueueRow({ index, item, expanded, onToggle, onDownload, onRemove }: QueueRowProps) {
   const result = item.result;
   const percent = result ? savingsPercent(item.source.size, result.size) : 0;
@@ -87,6 +84,12 @@ export function QueueRow({ index, item, expanded, onToggle, onDownload, onRemove
 
       {item.status === "error" && (
         <p className="data col-span-12 text-[0.8125rem] text-ink-60">{item.error}</p>
+      )}
+
+      {expanded && result && (
+        <div className="col-span-12">
+          <Compare item={item} result={result} />
+        </div>
       )}
     </Item>
   );

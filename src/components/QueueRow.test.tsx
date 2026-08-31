@@ -78,4 +78,55 @@ describe("QueueRow", () => {
     // No result yet, so download must be disabled.
     expect((screen.getByLabelText("Download") as HTMLButtonElement).disabled).toBe(true);
   });
+
+  it("does not render the Compare panel when expanded but no result exists yet", () => {
+    render(
+      <QueueRow
+        index={0}
+        item={baseItem({ status: "working" })}
+        expanded={true}
+        onToggle={noop}
+        onDownload={noop}
+        onRemove={noop}
+      />,
+    );
+
+    expect(screen.queryByLabelText("Comparison position")).toBeNull();
+  });
+
+  it("does not render the Compare panel when a result exists but the row is collapsed", () => {
+    render(
+      <QueueRow
+        index={0}
+        item={baseItem({
+          status: "done",
+          result: { blob: new Blob(), size: 900, width: 800, height: 600, mime: "image/png", keptOriginal: false },
+        })}
+        expanded={false}
+        onToggle={noop}
+        onDownload={noop}
+        onRemove={noop}
+      />,
+    );
+
+    expect(screen.queryByLabelText("Comparison position")).toBeNull();
+  });
+
+  it("renders the Compare panel only when expanded AND a result exists", () => {
+    render(
+      <QueueRow
+        index={0}
+        item={baseItem({
+          status: "done",
+          result: { blob: new Blob(), size: 900, width: 800, height: 600, mime: "image/png", keptOriginal: false },
+        })}
+        expanded={true}
+        onToggle={noop}
+        onDownload={noop}
+        onRemove={noop}
+      />,
+    );
+
+    expect(screen.getByLabelText("Comparison position")).toBeTruthy();
+  });
 });
