@@ -3,27 +3,38 @@ import { formatBytes } from "@/lib/engine/plan";
 interface MastheadProps {
   count: number;
   working: number;
+  errors: number;
   totals: { count: number; input: number; output: number; percent: number };
   onDownloadAll: () => void;
 }
 
-export function Masthead({ count, working, totals, onDownloadAll }: MastheadProps) {
-  const done = totals.count > 0 && working === 0;
+// Formats the aggregate savings figure. Growth reads as growth ("+n%"), not
+// as a mangled saving ("−-n%"): savingsPercent is negative when output grew
+// past input. At (or rounding to) exactly zero, no sign is shown — "0.0%"
+// implies neither a saving nor a loss.
+function formatPercent(percent: number): string {
+  const magnitude = Math.abs(percent).toFixed(1);
+  if (magnitude === "0.0") return "0.0%";
+  return percent >= 0 ? `−${magnitude}%` : `+${magnitude}%`;
+}
 
+export function Masthead({ count, working, errors, totals, onDownloadAll }: MastheadProps) {
   return (
     <header className="fixed inset-x-0 top-0 z-50 h-12 border-b border-rule bg-paper">
       <div className="mx-auto flex h-full max-w-[1440px] items-center justify-between px-6">
         <span className="label">Image Crunch</span>
 
         <div className="data flex items-center gap-4 text-[0.8125rem]">
-          {working > 0 && <span>WORKING · {working} OF {count}</span>}
-          {count === 0 && <span className="text-ink-60">IDLE · 0 FILES</span>}
-          {done && (
+          {working > 0 ? (
+            <span>WORKING · {working} OF {count}</span>
+          ) : count === 0 ? (
+            <span className="text-ink-60">IDLE · 0 FILES</span>
+          ) : totals.count > 0 ? (
             <>
               <span className="text-ink-60">
                 {totals.count} FILES · {formatBytes(totals.input)} → {formatBytes(totals.output)}
               </span>
-              <span className="text-signal">−{totals.percent.toFixed(1)}%</span>
+              <span className="text-signal">{formatPercent(totals.percent)}</span>
               <button
                 type="button"
                 onClick={onDownloadAll}
@@ -32,6 +43,10 @@ export function Masthead({ count, working, totals, onDownloadAll }: MastheadProp
                 ↓ ALL
               </button>
             </>
+          ) : errors > 0 ? (
+            <span className="text-ink-60">{count} FILES · {errors} FAILED</span>
+          ) : (
+            <span className="text-ink-60">{count} FILES · QUEUED</span>
           )}
         </div>
       </div>
