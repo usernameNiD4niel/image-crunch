@@ -211,6 +211,11 @@ describe("EncodeClient — pooled worker path", () => {
     client.dispose();
   });
 
+  // Round-robin makes this easy to get wrong: with a pool of 3 and only one
+  // follow-up encode the rotation never comes back around to slot 0, so an
+  // assertion on a single dispatch passes even if the dead worker were left
+  // in the pool. This drives a FULL rotation plus one, so a dead worker still
+  // in the array would necessarily be handed work.
   it("a dead worker is removed from rotation and replaced so subsequent work does not hang", async () => {
     const client = new EncodeClient();
     const initialCount = FakeWorker.instances.length;
@@ -226,22 +231,31 @@ describe("EncodeClient — pooled worker path", () => {
     expect(FakeWorker.instances.length).toBe(initialCount + 1);
     deadWorker.postMessage.mockClear();
 
-    // The next dispatch must never be routed back to the dead worker, and
-    // must actually be able to complete — proving the pool did not just
-    // silently start black-holing every Nth request.
-    const p1 = client.encode("b", fakeFile(), fakeSource, fakeSettings);
+    // A full rotation plus one: every live slot is visited at least once, so
+    // if the dead worker were still in the array it would receive work here.
+    const live = FakeWorker.instances.filter((w) => w !== deadWorker);
+    for (const w of live) w.postMessage.mockClear();
+
+    const dispatches = live.length + 1;
+    const promises = Array.from({ length: dispatches }, (_, n) =>
+      client.encode(`b${n}`, fakeFile(), fakeSource, fakeSettings),
+    );
+
     expect(deadWorker.postMessage).not.toHaveBeenCalled();
 
-    const recipient = FakeWorker.instances.find(
-      (w) => w !== deadWorker && w.postMessage.mock.calls.length > 0,
+    // Every dispatch must be answerable — none black-holed.
+    const sent = live.flatMap((w) =>
+      w.postMessage.mock.calls.map(([m]) => ({ worker: w, message: m })),
     );
-    expect(recipient).toBeDefined();
-    const [sentMessage] = recipient!.postMessage.mock.calls.at(-1)!;
-    recipient!.onmessage?.({
-      data: { type: "done", id: sentMessage.id, generation: sentMessage.generation, result: fakeResult(9) },
+    expect(sent).toHaveLength(dispatches);
+
+    sent.forEach(({ worker, message }, n) => {
+      worker.onmessage?.({
+        data: { type: "done", id: message.id, generation: message.generation, result: fakeResult(n) },
+      });
     });
 
-    await expect(p1).resolves.toEqual(fakeResult(9));
+    await expect(Promise.all(promises)).resolves.toHaveLength(dispatches);
     client.dispose();
   });
 });

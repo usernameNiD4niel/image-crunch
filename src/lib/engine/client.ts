@@ -185,6 +185,15 @@ export class EncodeClient {
 
     // Try to keep the pool at full strength so the pool self-heals rather
     // than shrinking one dead worker at a time.
+    //
+    // Note this is NOT a bound on total respawns over a session: it bounds
+    // only the number of workers ALIVE AT ONCE. A worker that constructs
+    // successfully and then dies again will be replaced again, every time,
+    // for as long as the client lives. That is deliberate — a transient
+    // per-file failure should not permanently shrink the pool — but it does
+    // mean a worker module that reliably dies after construction will churn
+    // spawn/terminate once per failing encode rather than giving up. The
+    // only hard stop is an empty pool, handled just below.
     if (!this.disposed && this.workers.length < this.poolSize) {
       this.spawnWorker();
     }

@@ -32,7 +32,11 @@ export async function encodeOne(
   const bitmap = await createImageBitmap(file);
 
   try {
-    const canvas = canUseOffscreen()
+    // Decided ONCE and reused for the encode branch below. Re-testing with
+    // `canvas instanceof OffscreenCanvas` would throw ReferenceError in
+    // exactly the runtime the fallback exists for — one without the global.
+    const offscreen = canUseOffscreen();
+    const canvas = offscreen
       ? new OffscreenCanvas(width, height)
       : Object.assign(document.createElement("canvas"), { width, height });
 
@@ -53,8 +57,8 @@ export async function encodeOne(
 
     const quality = settings.quality / 100;
     const blob =
-      canvas instanceof OffscreenCanvas
-        ? await canvas.convertToBlob({ type: mime, quality })
+      offscreen
+        ? await (canvas as OffscreenCanvas).convertToBlob({ type: mime, quality })
         : await new Promise<Blob>((resolve, reject) =>
             (canvas as HTMLCanvasElement).toBlob(
               (b) => (b ? resolve(b) : reject(new Error("Encoding produced no data"))),
