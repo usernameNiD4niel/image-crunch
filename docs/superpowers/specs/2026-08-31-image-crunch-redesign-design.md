@@ -116,7 +116,10 @@ changes.
 
 **Responsive:** below 768px the grid collapses to 4 columns, display drops to
 `clamp(2.75rem, 14vw, 4rem)`, the meta column moves beneath the CTA, and the
-masthead status truncates to the percentage alone.
+masthead status truncates to the percentage alone — plus a failure count when
+there is one. *(Amended during implementation: failures were judged worth more
+than literal truncation. A user on a phone whose files silently failed learns
+nothing from a percentage alone.)*
 
 ## 3. The tool
 
