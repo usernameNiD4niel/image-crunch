@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { ImageUploader } from '@/components/ImageUploader';
 import { ImageProcessor } from '@/components/ImageProcessor';
-import { UserMenu } from '@/components/UserMenu';
 import { ImageInfo } from '@/lib/imageUtils';
 import { Zap, Image as ImageIcon, Sparkles } from 'lucide-react';
 
@@ -23,10 +22,6 @@ const Index = () => {
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20">
       {/* Header */}
       <div className="container mx-auto px-4 py-8">
-        {/* User Menu */}
-        <div className="flex justify-end mb-4">
-          <UserMenu />
-        </div>
         <div className="text-center mb-12">
           <div className="flex items-center justify-center gap-3 mb-4">
             <div className="p-3 rounded-full bg-primary/10">
