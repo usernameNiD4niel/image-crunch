@@ -1,0 +1,177 @@
+import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
+import type { EncodeResult, EncodeSettings, QueueItem } from "@/lib/engine/types";
+import { MAX_QUEUE, outputFilename, savingsPercent } from "@/lib/engine/plan";
+import { EncodeClient, releaseAll, releaseUrl, StaleResult } from "@/lib/engine/client";
+import { bundleZip } from "@/lib/engine/zip";
+
+export interface QueueState {
+  items: QueueItem[];
+  settings: EncodeSettings;
+  notice: string | null;
+}
+
+export const initialQueueState: QueueState = {
+  items: [],
+  settings: { quality: 85, resize: "none", format: "keep" },
+  notice: null,
+};
+
+export type QueueAction =
+  | { type: "add"; items: QueueItem[] }
+  | { type: "remove"; id: string }
+  | { type: "clear" }
+  | { type: "working"; id: string }
+  | { type: "result"; id: string; result: EncodeResult }
+  | { type: "error"; id: string; message: string }
+  | { type: "settings"; settings: Partial<EncodeSettings> }
+  | { type: "notice"; message: string | null };
+
+export function queueReducer(state: QueueState, action: QueueAction): QueueState {
+  switch (action.type) {
+    case "add": {
+      const room = MAX_QUEUE - state.items.length;
+      const accepted = action.items.slice(0, Math.max(0, room));
+      const rejected = action.items.length - accepted.length;
+      return {
+        ...state,
+        items: [...state.items, ...accepted],
+        notice: rejected > 0 ? `Queue holds ${MAX_QUEUE} files. ${rejected} not added.` : state.notice,
+      };
+    }
+    case "remove":
+      return { ...state, items: state.items.filter((i) => i.id !== action.id) };
+    case "clear":
+      return { ...state, items: [], notice: null };
+    case "working":
+      return {
+        ...state,
+        items: state.items.map((i) => (i.id === action.id ? { ...i, status: "working" } : i)),
+      };
+    case "result":
+      return {
+        ...state,
+        items: state.items.map((i) =>
+          i.id === action.id
+            ? { ...i, status: action.result.keptOriginal ? "passthrough" : "done", result: action.result }
+            : i,
+        ),
+      };
+    case "error":
+      return {
+        ...state,
+        items: state.items.map((i) =>
+          i.id === action.id ? { ...i, status: "error", error: action.message } : i,
+        ),
+      };
+    case "settings":
+      return { ...state, settings: { ...state.settings, ...action.settings } };
+    case "notice":
+      return { ...state, notice: action.message };
+    default:
+      return state;
+  }
+}
+
+export function useQueue() {
+  const [state, dispatch] = useReducer(queueReducer, initialQueueState);
+  const clientRef = useRef<EncodeClient | null>(null);
+  const debounceRef = useRef<number | undefined>(undefined);
+
+  if (clientRef.current === null) clientRef.current = new EncodeClient();
+
+  useEffect(() => {
+    return () => {
+      clientRef.current?.dispose();
+      releaseAll();
+    };
+  }, []);
+
+  // runAll must NEVER depend on `state.items`/`state.settings` directly:
+  // every "result"/"working"/"error" dispatch below produces a new items
+  // array, which would give a useCallback-memoized runAll a new identity
+  // on every completed encode, which would re-fire the scheduling effect
+  // below, which would re-encode everything again, forever. Instead, the
+  // latest items/settings are read through refs kept in sync on every
+  // render, so runAll's own identity is stable (empty dep array) and
+  // completing an encode never itself triggers another sweep.
+  const itemsRef = useRef(state.items);
+  const settingsRef = useRef(state.settings);
+  itemsRef.current = state.items;
+  settingsRef.current = state.settings;
+
+  const runAll = useCallback(() => {
+    const client = clientRef.current;
+    if (!client) return;
+    client.bumpGeneration();
+
+    for (const item of itemsRef.current) {
+      dispatch({ type: "working", id: item.id });
+      client
+        .encode(item.id, item.file, item.source, settingsRef.current)
+        .then((result) => dispatch({ type: "result", id: item.id, result }))
+        .catch((error) => {
+          if (error instanceof StaleResult) return; // superseded, not a failure
+          dispatch({ type: "error", id: item.id, message: error.message });
+        });
+    }
+  }, []);
+
+  // Debounced re-encode. Keyed ONLY on values that should genuinely
+  // trigger a fresh sweep: which files are queued (by id, order-stable
+  // join, not the array reference) and the settings that affect encoding.
+  // Deliberately NOT keyed on `state.items` itself — a "result" dispatch
+  // changes item.status/item.result and therefore the items array
+  // identity, but not the id set or the settings, so it must not
+  // re-trigger this effect (see runAll's comment above for why that
+  // matters).
+  const itemIdsKey = state.items.map((i) => i.id).join(",");
+  useEffect(() => {
+    if (state.items.length === 0) return;
+    window.clearTimeout(debounceRef.current);
+    debounceRef.current = window.setTimeout(runAll, 200);
+    return () => window.clearTimeout(debounceRef.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [itemIdsKey, state.settings.quality, state.settings.resize, state.settings.format, runAll]);
+
+  const totals = useMemo(() => {
+    const done = state.items.filter((i) => i.result);
+    const input = done.reduce((n, i) => n + i.source.size, 0);
+    const output = done.reduce((n, i) => n + (i.result?.size ?? 0), 0);
+    return { count: done.length, input, output, percent: savingsPercent(input, output) };
+  }, [state.items]);
+
+  const downloadOne = useCallback((item: QueueItem) => {
+    if (!item.result) return;
+    const name = outputFilename(item.source.name, item.result.mime, new Set());
+    save(item.result.blob, name);
+  }, []);
+
+  const downloadAll = useCallback(async () => {
+    const taken = new Set<string>();
+    const entries = state.items
+      .filter((i) => i.result)
+      .map((i) => {
+        const name = outputFilename(i.source.name, i.result!.mime, taken);
+        taken.add(name);
+        return { name, blob: i.result!.blob };
+      });
+    if (entries.length === 0) return;
+    save(await bundleZip(entries), "image-crunch.zip");
+  }, [state.items]);
+
+  const removeItem = useCallback((item: QueueItem) => {
+    releaseUrl(item.previewUrl);
+    dispatch({ type: "remove", id: item.id });
+  }, []);
+
+  return { ...state, totals, dispatch, downloadOne, downloadAll, removeItem };
+}
+
+function save(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
