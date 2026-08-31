@@ -33,6 +33,7 @@ describe("resolveOutputFormat", () => {
 
   it("never converts a passthrough type, even when asked", () => {
     expect(resolveOutputFormat("image/svg+xml", "image/jpeg")).toBe("image/svg+xml");
+    expect(resolveOutputFormat("image/x-icon", "image/webp")).toBe("image/x-icon");
   });
 
   it("normalises the legacy image/jpg source type to image/jpeg", () => {
@@ -61,11 +62,12 @@ describe("targetDimensions", () => {
     expect(targetDimensions(800, 600, 2048)).toEqual({ width: 800, height: 600 });
   });
 
-  it("rounds to whole pixels and never returns zero", () => {
-    expect(targetDimensions(1000, 3, 1280)).toEqual({ width: 1000, height: 3 });
-    const r = targetDimensions(4000, 5, 1280);
-    expect(Number.isInteger(r.width)).toBe(true);
-    expect(r.height).toBeGreaterThanOrEqual(1);
+  it("rounds to whole pixels when scaling", () => {
+    expect(targetDimensions(10000, 7000, 2048)).toEqual({ width: 2048, height: 1434 });
+  });
+
+  it("never returns zero height due to rounding", () => {
+    expect(targetDimensions(100000, 1, 1280)).toEqual({ width: 1280, height: 1 });
   });
 });
 
@@ -123,6 +125,14 @@ describe("outputFilename", () => {
     const taken = new Set(["logo.png", "logo-2.png"]);
     expect(outputFilename("logo.png", "image/png", taken)).toBe("logo-3.png");
   });
+
+  it("handles dot-only filenames", () => {
+    expect(outputFilename(".gitignore", "image/png", new Set())).toBe(".gitignore.png");
+  });
+
+  it("uses bin extension for unmapped mime types", () => {
+    expect(outputFilename("file.unknown", "application/octet-stream", new Set())).toBe("file.bin");
+  });
 });
 
 describe("formatBytes", () => {
@@ -130,8 +140,20 @@ describe("formatBytes", () => {
     expect(formatBytes(0)).toBe("0 B");
   });
 
+  it("formats bytes below 1KB", () => {
+    expect(formatBytes(1023)).toBe("1023 B");
+  });
+
+  it("formats at the 1KB boundary", () => {
+    expect(formatBytes(1024)).toBe("1 KB");
+  });
+
   it("formats kilobytes without decimals", () => {
     expect(formatBytes(310 * 1024)).toBe("310 KB");
+  });
+
+  it("formats at the 1MB boundary", () => {
+    expect(formatBytes(1048575)).toBe("1024 KB");
   });
 
   it("formats megabytes with one decimal", () => {
