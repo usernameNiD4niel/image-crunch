@@ -1,4 +1,4 @@
-import type { OutputFormat, ResizePreset } from "./types";
+import type { EncodeResult, OutputFormat, QueueItem, ResizePreset } from "./types";
 
 export const MAX_FILE_BYTES = 35 * 1024 * 1024;
 export const MAX_QUEUE = 30;
@@ -92,4 +92,28 @@ export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/**
+ * The result a row may currently show or hand out, or `undefined` if there
+ * isn't one.
+ *
+ * `item.result` alone is NOT that answer. The moment a re-encode starts
+ * (status "working", which every 200ms-debounced settings sweep sets on
+ * every row) the stored result describes the PREVIOUS quality/format — it
+ * is superseded, even though it is still perfectly good bytes for the old
+ * settings. An errored row's stored result is likewise no longer a
+ * description of anything the app is offering.
+ *
+ * The bytes are deliberately NOT deleted from the item on "working": the
+ * expanded Compare panel would tear down and rebuild on every slider step,
+ * and rows would blank out and refill on every settings change, which is a
+ * worse experience than the bug. Instead every CONSUMER — download-one,
+ * download-all, the size and percentage columns, the totals — asks this
+ * function, so nothing stale is ever shown as current or handed to the
+ * user as a download.
+ */
+export function currentResult(item: QueueItem): EncodeResult | undefined {
+  if (item.status === "working" || item.status === "error") return undefined;
+  return item.result;
 }

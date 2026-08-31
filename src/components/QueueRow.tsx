@@ -1,5 +1,5 @@
 import type { QueueItem } from "@/lib/engine/types";
-import { formatBytes, formatPercent, savingsPercent } from "@/lib/engine/plan";
+import { currentResult, formatBytes, formatPercent, savingsPercent } from "@/lib/engine/plan";
 import { Item, ItemActions } from "@/components/ui/item";
 import { Spinner } from "@/components/ui/spinner";
 import { Compare } from "@/components/Compare";
@@ -14,7 +14,13 @@ interface QueueRowProps {
 }
 
 export function QueueRow({ index, item, expanded, onToggle, onDownload, onRemove }: QueueRowProps) {
-  const result = item.result;
+  // Not item.result: while a re-encode is in flight the row still holds the
+  // previous run's bytes, and every figure derived from them describes
+  // settings that are no longer on screen. currentResult withholds them for
+  // a working or errored row, so this row's sizes, percentage and download
+  // are either current or absent — never quietly stale.
+  const result = currentResult(item);
+  const working = item.status === "working";
   const percent = result ? savingsPercent(item.source.size, result.size) : 0;
 
   return (
@@ -33,17 +39,22 @@ export function QueueRow({ index, item, expanded, onToggle, onDownload, onRemove
         {result?.outcome === "encoded" && ` → ${result.width}×${result.height}`}
       </span>
 
+      {/* Working OR sizes, never both: this column used to render the
+          spinner and the previous run's byte figures side by side, so a
+          re-encoding row read "⟳ encoding… 3.4 MB → 141 KB" with numbers
+          from the settings the user had just changed away from. */}
       <span className="data col-span-2 text-[0.8125rem]">
-        {item.status === "working" && (
+        {working ? (
           <span className="inline-flex items-center gap-2 text-ink-60">
             <Spinner className="size-3.5" />
             encoding…
           </span>
-        )}
-        {result && (
-          <>
-            {formatBytes(item.source.size)} → {formatBytes(result.size)}
-          </>
+        ) : (
+          result && (
+            <>
+              {formatBytes(item.source.size)} → {formatBytes(result.size)}
+            </>
+          )
         )}
       </span>
 
@@ -89,22 +100,28 @@ export function QueueRow({ index, item, expanded, onToggle, onDownload, onRemove
       </ItemActions>
 
       {item.status === "passthrough" && (
-        <p className="data col-span-12 text-[0.8125rem] text-ink-38">passthrough — no gain</p>
+        <p className="data col-span-11 col-start-2 text-[0.8125rem] text-ink-38">passthrough — no gain</p>
       )}
 
       {item.status === "kept" && (
-        <p className="data col-span-12 text-[0.8125rem] text-ink-60">
+        <p className="data col-span-11 col-start-2 text-[0.8125rem] text-ink-60">
           kept original — re-encoding did not make this file smaller
         </p>
       )}
 
       {item.status === "error" && (
-        <p className="data col-span-12 text-[0.8125rem] text-ink-60">{item.error}</p>
+        <p className="data col-span-11 col-start-2 text-[0.8125rem] text-ink-60">{item.error}</p>
       )}
 
-      {expanded && result && (
+      {/* Deliberately item.result, not `result`: the compare panel holds
+          local split-position state and mints an object URL per blob, so
+          unmounting it on every settings sweep would reset the divider the
+          user just placed and thrash URLs. It carries no figures — only the
+          two images — and re-points at the new blob the moment the encode
+          lands. Downloads are gated on `result`; the preview is not. */}
+      {expanded && item.result && (
         <div className="col-span-12">
-          <Compare item={item} result={result} />
+          <Compare item={item} result={item.result} />
         </div>
       )}
     </Item>

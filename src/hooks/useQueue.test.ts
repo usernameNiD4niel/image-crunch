@@ -108,6 +108,20 @@ describe("queueReducer", () => {
     expect(totals).toEqual({ input: 1000, output: 250 });
   });
 
+  it("drops a failed row's earlier result so it cannot be counted or downloaded", () => {
+    let state = queueReducer(initialQueueState, { type: "add", items: [item("a")] });
+    state = queueReducer(state, {
+      type: "result",
+      id: "a",
+      result: { blob: new Blob(), size: 250, width: 1, height: 1, mime: "image/png", outcome: "encoded" },
+    });
+    expect(state.items[0].result).toBeDefined();
+
+    state = queueReducer(state, { type: "error", id: "a", message: "boom" });
+    expect(state.items[0].status).toBe("error");
+    expect(state.items[0].result).toBeUndefined();
+  });
+
   it("marks an item errored without touching its neighbours", () => {
     const added = queueReducer(initialQueueState, { type: "add", items: [item("a"), item("b")] });
     const state = queueReducer(added, { type: "error", id: "a", message: "boom" });
@@ -127,7 +141,8 @@ describe("queueReducer", () => {
 // a mocked EncodeClient and asserts encode is called exactly once per
 // queued item, even after settling and letting extra time pass.
 
-const { encodeMock, MockEncodeClient, MockStaleResult } = vi.hoisted(() => {
+const { encodeMock, bundleZipMock, MockEncodeClient, MockStaleResult } = vi.hoisted(() => {
+  const bundleZipMock = vi.fn(async () => new Blob(["zip"]));
   const encodeMock = vi.fn(async () => ({
     blob: new Blob(["x"]),
     size: 10,
@@ -145,8 +160,10 @@ const { encodeMock, MockEncodeClient, MockStaleResult } = vi.hoisted(() => {
 
   class MockStaleResult extends Error {}
 
-  return { encodeMock, MockEncodeClient, MockStaleResult };
+  return { encodeMock, bundleZipMock, MockEncodeClient, MockStaleResult };
 });
+
+vi.mock("@/lib/engine/zip", () => ({ bundleZip: bundleZipMock }));
 
 vi.mock("@/lib/engine/client", () => ({
   EncodeClient: MockEncodeClient,
@@ -189,5 +206,116 @@ describe("useQueue re-encode scheduling", () => {
     expect(encodeMock).toHaveBeenCalledTimes(2);
 
     unmount();
+  });
+});
+
+// --- Superseded-result coverage ---------------------------------------
+//
+// During the 200ms-debounced sweep that follows ANY settings change every
+// row goes to "working" while still holding the previous run's blob. These
+// pin that none of that reaches the user as a current figure or a download.
+
+describe("useQueue while a re-encode is in flight", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.clearAllMocks();
+    cleanup();
+  });
+
+  /** Queue two files, settle them, then start a sweep that never finishes. */
+  async function queueThenStall() {
+    vi.useFakeTimers();
+    // vi.clearAllMocks() in afterEach clears calls but NOT implementations,
+    // and this suite installs a never-resolving one below — restate the
+    // settling implementation so each test starts from a settled queue.
+    encodeMock.mockImplementation(async () => ({
+      blob: new Blob(["x"]),
+      size: 10,
+      width: 1,
+      height: 1,
+      mime: "image/png",
+      outcome: "encoded" as const,
+    }));
+    const hook = renderHook(() => useQueue());
+
+    act(() => {
+      hook.result.current.dispatch({ type: "add", items: [item("a"), item("b")] });
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(300);
+    });
+    expect(hook.result.current.totals.count).toBe(2);
+
+    // Settings change -> every row goes back to "working", and this time the
+    // encodes never resolve, so the sweep stays in flight.
+    encodeMock.mockImplementation(() => new Promise(() => {}));
+    act(() => {
+      hook.result.current.dispatch({ type: "settings", settings: { quality: 40 } });
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(300);
+    });
+
+    expect(hook.result.current.items.every((i) => i.status === "working")).toBe(true);
+    // The previous run's bytes are still on the items — that is the point.
+    expect(hook.result.current.items.every((i) => i.result !== undefined)).toBe(true);
+    return hook;
+  }
+
+  it("excludes rows that are re-encoding from the totals", async () => {
+    const hook = await queueThenStall();
+    expect(hook.result.current.totals).toMatchObject({ count: 0, input: 0, output: 0 });
+    hook.unmount();
+  });
+
+  it("downloadAll refuses to build a zip while any item is working", async () => {
+    const hook = await queueThenStall();
+    await act(async () => {
+      await hook.result.current.downloadAll();
+    });
+    expect(bundleZipMock).not.toHaveBeenCalled();
+    hook.unmount();
+  });
+
+  it("downloadOne hands out nothing for a row that is re-encoding", async () => {
+    const hook = await queueThenStall();
+    const createUrl = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:download");
+
+    act(() => {
+      hook.result.current.downloadOne(hook.result.current.items[0]);
+    });
+
+    // save() is the only thing that mints a URL here; not reaching it proves
+    // no bytes were offered.
+    expect(createUrl).not.toHaveBeenCalled();
+    createUrl.mockRestore();
+    hook.unmount();
+  });
+
+  it("downloadAll works again once the sweep settles", async () => {
+    const hook = await queueThenStall();
+    encodeMock.mockImplementation(async () => ({
+      blob: new Blob(["y"]),
+      size: 20,
+      width: 1,
+      height: 1,
+      mime: "image/png",
+      outcome: "encoded" as const,
+    }));
+
+    // Re-trigger a sweep that this time completes.
+    act(() => {
+      hook.result.current.dispatch({ type: "settings", settings: { quality: 41 } });
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(300);
+    });
+
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:zip");
+    await act(async () => {
+      await hook.result.current.downloadAll();
+    });
+    expect(bundleZipMock).toHaveBeenCalledTimes(1);
+    hook.unmount();
   });
 });

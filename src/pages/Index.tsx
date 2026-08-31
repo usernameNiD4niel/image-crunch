@@ -49,7 +49,10 @@ const Index = () => {
       const parts: string[] = [];
       if (screeningMessage) parts.push(screeningMessage);
       if (failed > 0) parts.push(`${failed} file(s) could not be read.`);
-      if (parts.length > 0) dispatch({ type: "notice", message: parts.join(" ") });
+      // Always dispatch, even with nothing to say: a clean second drop must
+      // CLEAR the previous drop's "3 unsupported file(s) skipped.", which
+      // would otherwise sit above the new files reading as a report on them.
+      dispatch({ type: "notice", message: parts.length > 0 ? parts.join(" ") : null });
 
       if (ok.length > 0) dispatch({ type: "add", items: ok });
     },
@@ -66,7 +69,11 @@ const Index = () => {
         onDownloadAll={downloadAll}
       />
       <Statement />
-      <main id="tool" className="mx-auto max-w-[1440px] border-t border-rule px-6 py-16">
+      {/* scroll-mt-12 clears the 48px fixed masthead: both Statement's
+          href="#tool" and DropZone's post-drop scrollIntoView target this
+          element, and without the offset the notice bar and the top of the
+          queue land underneath the header. */}
+      <main id="tool" className="mx-auto max-w-[1440px] scroll-mt-12 border-t border-rule px-6 py-16">
         {notice && (
           <div className="mb-4 flex items-baseline justify-between border-b border-rule pb-2">
             <p className="text-ink-60">{notice}</p>
@@ -85,13 +92,17 @@ const Index = () => {
           <DropZone onFiles={onFiles} />
         ) : (
           <>
-            <Queue items={items} totals={totals} onDownloadOne={downloadOne} onRemove={removeItem} />
+            <Queue items={items} working={working} totals={totals} onDownloadOne={downloadOne} onRemove={removeItem} />
             <DropZone onFiles={onFiles} compact />
             <Controls
               settings={settings}
               onChange={(patch) => dispatch({ type: "settings", settings: patch })}
               onDownloadAll={downloadAll}
-              disabled={totals.count === 0}
+              // Also disabled mid-sweep, not just when empty: every row
+              // still carries the PREVIOUS run's bytes during the debounced
+              // re-encode, so a zip taken now would not match the settings
+              // on screen. Masthead's ↓ ALL already hides while working.
+              disabled={totals.count === 0 || working > 0}
             />
           </>
         )}

@@ -123,6 +123,69 @@ describe("QueueRow", () => {
     expect((screen.getByLabelText("Download photo.png") as HTMLButtonElement).disabled).toBe(true);
   });
 
+  it("hides the previous run's figures and download while the row is re-encoding", () => {
+    // The row still HOLDS last run's result (it is kept for the compare
+    // panel's continuity), but every current-facing consumer must ignore it:
+    // otherwise a re-encoding row reads "⟳ encoding… 1000 B → 400 B  60.0%"
+    // with numbers from the settings the user just changed away from, and
+    // its ↓ hands out those old bytes.
+    render(
+      <QueueRow
+        index={0}
+        item={baseItem({
+          status: "working",
+          result: { blob: new Blob(), size: 400, width: 800, height: 600, mime: "image/webp", outcome: "encoded" },
+        })}
+        expanded={false}
+        onToggle={noop}
+        onDownload={noop}
+        onRemove={noop}
+      />,
+    );
+
+    expect(screen.getByText("encoding…")).toBeTruthy();
+    expect(screen.queryByText(/400 B/)).toBeNull();
+    expect(screen.queryByText(/60\.0%/)).toBeNull();
+    expect((screen.getByLabelText("Download photo.png") as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("offers no download and no figures for an errored row", () => {
+    render(
+      <QueueRow
+        index={0}
+        item={baseItem({ status: "error", error: "Encoding failed" })}
+        expanded={false}
+        onToggle={noop}
+        onDownload={noop}
+        onRemove={noop}
+      />,
+    );
+
+    expect(screen.getByText("Encoding failed")).toBeTruthy();
+    expect((screen.getByLabelText("Download photo.png") as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("aligns the passthrough note with the filename column, not the row index", () => {
+    const { container } = render(
+      <QueueRow
+        index={0}
+        item={baseItem({
+          status: "passthrough",
+          source: { name: "icon.svg", type: "image/svg+xml", size: 500, width: 32, height: 32 },
+        })}
+        expanded={false}
+        onToggle={noop}
+        onDownload={noop}
+        onRemove={noop}
+      />,
+    );
+    void container;
+    const note = screen.getByText("passthrough — no gain");
+    const classes = note.className.split(" ");
+    expect(classes).toContain("col-start-2");
+    expect(classes).not.toContain("col-span-12");
+  });
+
   it("does not render the Compare panel when expanded but no result exists yet", () => {
     render(
       <QueueRow

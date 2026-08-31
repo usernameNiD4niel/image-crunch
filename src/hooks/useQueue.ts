@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
 import type { EncodeOutcome, EncodeResult, EncodeSettings, ItemStatus, QueueItem } from "@/lib/engine/types";
-import { MAX_QUEUE, outputFilename, savingsPercent } from "@/lib/engine/plan";
+import { currentResult, MAX_QUEUE, outputFilename, savingsPercent } from "@/lib/engine/plan";
 import { EncodeClient, releaseAll, releaseUrl, StaleResult } from "@/lib/engine/client";
 import { bundleZip } from "@/lib/engine/zip";
 
@@ -35,7 +35,6 @@ const STATUS_BY_OUTCOME: Record<EncodeOutcome, ItemStatus> = {
 export type QueueAction =
   | { type: "add"; items: QueueItem[] }
   | { type: "remove"; id: string }
-  | { type: "clear" }
   | { type: "working"; id: string }
   | { type: "result"; id: string; result: EncodeResult }
   | { type: "error"; id: string; message: string }
@@ -56,8 +55,6 @@ export function queueReducer(state: QueueState, action: QueueAction): QueueState
     }
     case "remove":
       return { ...state, items: state.items.filter((i) => i.id !== action.id) };
-    case "clear":
-      return { ...state, items: [], notice: null };
     case "working":
       return {
         ...state,
@@ -76,7 +73,13 @@ export function queueReducer(state: QueueState, action: QueueAction): QueueState
       return {
         ...state,
         items: state.items.map((i) =>
-          i.id === action.id ? { ...i, status: "error", error: action.message } : i,
+          i.id === action.id
+            ? // A failed run's stored result belongs to an earlier, successful
+              // run under different settings. It must not be counted in the
+              // totals or offered as a download, and unlike "working" there is
+              // no display-continuity reason to keep the bytes around.
+              { ...i, status: "error", error: action.message, result: undefined }
+            : i,
         ),
       };
     case "settings":
@@ -150,26 +153,41 @@ export function useQueue() {
   }, [itemIdsKey, state.settings.quality, state.settings.resize, state.settings.format, runAll]);
 
   const totals = useMemo(() => {
-    const done = state.items.filter((i) => i.result);
-    const input = done.reduce((n, i) => n + i.source.size, 0);
-    const output = done.reduce((n, i) => n + (i.result?.size ?? 0), 0);
+    // currentResult, not i.result: a row that is mid-re-encode still holds
+    // the PREVIOUS run's bytes, and aggregating those would announce a total
+    // for settings that are no longer on screen (the Queue total is an
+    // aria-live region — it would read out stale figures during a drag).
+    const done = state.items
+      .map((i) => ({ item: i, result: currentResult(i) }))
+      .filter((r): r is { item: QueueItem; result: EncodeResult } => r.result !== undefined);
+    const input = done.reduce((n, r) => n + r.item.source.size, 0);
+    const output = done.reduce((n, r) => n + r.result.size, 0);
     return { count: done.length, input, output, percent: savingsPercent(input, output) };
   }, [state.items]);
 
   const downloadOne = useCallback((item: QueueItem) => {
-    if (!item.result) return;
-    const name = outputFilename(item.source.name, item.result.mime, new Set());
-    save(item.result.blob, name);
+    const result = currentResult(item);
+    if (!result) return;
+    const name = outputFilename(item.source.name, result.mime, new Set());
+    save(result.blob, name);
   }, []);
 
   const downloadAll = useCallback(async () => {
+    // A zip assembled mid-sweep would mix rows finished under the new
+    // settings with rows still holding the old run's bytes, under one
+    // filename scheme, with nothing on screen saying so. Refuse outright
+    // while any row is working; the UI disables the button too, but the
+    // guard is here so no caller can route around it.
+    if (state.items.some((i) => i.status === "working")) return;
+
     const taken = new Set<string>();
     const entries = state.items
-      .filter((i) => i.result)
-      .map((i) => {
-        const name = outputFilename(i.source.name, i.result!.mime, taken);
+      .map((i) => ({ item: i, result: currentResult(i) }))
+      .filter((r): r is { item: QueueItem; result: EncodeResult } => r.result !== undefined)
+      .map(({ item, result }) => {
+        const name = outputFilename(item.source.name, result.mime, taken);
         taken.add(name);
-        return { name, blob: i.result!.blob };
+        return { name, blob: result.blob };
       });
     if (entries.length === 0) return;
     save(await bundleZip(entries), "image-crunch.zip");
@@ -189,5 +207,9 @@ function save(blob: Blob, filename: string) {
   a.href = url;
   a.download = filename;
   a.click();
-  URL.revokeObjectURL(url);
+  // Firefox and Safari can truncate or drop the download if the object URL
+  // is revoked in the same task as the synthetic click on a detached
+  // anchor. Yield first; the URL still cannot outlive this turn of the
+  // event loop by more than a tick.
+  setTimeout(() => URL.revokeObjectURL(url), 0);
 }

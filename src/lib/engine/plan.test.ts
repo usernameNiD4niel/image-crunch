@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import type { EncodeResult, ItemStatus, QueueItem } from "./types";
 import {
   isPassthrough,
   resolveOutputFormat,
@@ -7,6 +8,7 @@ import {
   shouldKeepOriginal,
   outputFilename,
   formatBytes,
+  currentResult,
 } from "./plan";
 
 describe("isPassthrough", () => {
@@ -158,5 +160,47 @@ describe("formatBytes", () => {
 
   it("formats megabytes with one decimal", () => {
     expect(formatBytes(2.4 * 1024 * 1024)).toBe("2.4 MB");
+  });
+});
+
+describe("currentResult", () => {
+  const result: EncodeResult = {
+    blob: new Blob(["x"]),
+    size: 250,
+    width: 10,
+    height: 10,
+    mime: "image/webp",
+    outcome: "encoded",
+  };
+
+  const row = (status: ItemStatus): QueueItem => ({
+    id: "a",
+    file: new File([], "a.png", { type: "image/png" }),
+    source: { name: "a.png", type: "image/png", size: 1000, width: 10, height: 10 },
+    previewUrl: "blob:a",
+    status,
+    result,
+  });
+
+  it("withholds the stored result while the row is re-encoding", () => {
+    // The bytes are still on the item — deliberately, for display
+    // continuity — but they describe the PREVIOUS settings, so nothing may
+    // treat them as current.
+    expect(row("working").result).toBe(result);
+    expect(currentResult(row("working"))).toBeUndefined();
+  });
+
+  it("withholds the stored result for an errored row", () => {
+    expect(currentResult(row("error"))).toBeUndefined();
+  });
+
+  it("returns the result for a settled row, whatever the outcome", () => {
+    expect(currentResult(row("done"))).toBe(result);
+    expect(currentResult(row("passthrough"))).toBe(result);
+    expect(currentResult(row("kept"))).toBe(result);
+  });
+
+  it("returns undefined for a queued row that has never run", () => {
+    expect(currentResult({ ...row("queued"), result: undefined })).toBeUndefined();
   });
 });

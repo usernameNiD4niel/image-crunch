@@ -5,12 +5,13 @@ import { QueueRow } from "@/components/QueueRow";
 
 interface QueueProps {
   items: QueueItem[];
+  working: number;
   totals: { count: number; input: number; output: number; percent: number };
   onDownloadOne: (item: QueueItem) => void;
   onRemove: (item: QueueItem) => void;
 }
 
-export function Queue({ items, totals, onDownloadOne, onRemove }: QueueProps) {
+export function Queue({ items, working, totals, onDownloadOne, onRemove }: QueueProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   return (
@@ -42,12 +43,20 @@ export function Queue({ items, totals, onDownloadOne, onRemove }: QueueProps) {
           would be a screen-reader firehose during a sweep. */}
       <div className="data flex items-baseline justify-between pt-4 text-[0.8125rem]" aria-live="polite">
         <span className="label">Total</span>
-        <span>
-          {formatBytes(totals.input)} → {formatBytes(totals.output)}{" "}
-          <span className={totals.percent >= 0 ? "text-signal" : "text-ink-60"}>
-            {formatPercent(totals.percent)}
+        {/* While a sweep is running the per-row results are superseded, so
+            there is no honest aggregate to state — and stating the previous
+            one here would have this live region read out figures for
+            settings the user has already moved off. Say what is true. */}
+        {working > 0 ? (
+          <span className="text-ink-60">encoding {working} file(s)…</span>
+        ) : (
+          <span>
+            {formatBytes(totals.input)} → {formatBytes(totals.output)}{" "}
+            <span className={totals.percent >= 0 ? "text-signal" : "text-ink-60"}>
+              {formatPercent(totals.percent)}
+            </span>
           </span>
-        </span>
+        )}
       </div>
     </section>
   );
