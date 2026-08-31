@@ -210,4 +210,38 @@ describe("EncodeClient — pooled worker path", () => {
     await expect(p1).resolves.toEqual(fakeResult(2));
     client.dispose();
   });
+
+  it("a dead worker is removed from rotation and replaced so subsequent work does not hang", async () => {
+    const client = new EncodeClient();
+    const initialCount = FakeWorker.instances.length;
+    expect(initialCount).toBeGreaterThanOrEqual(2);
+
+    const deadWorker = FakeWorker.instances[0];
+    const p0 = client.encode("a", fakeFile(), fakeSource, fakeSettings); // -> worker 0 (about to die)
+    deadWorker.onerror?.({ message: "boom", preventDefault: () => {} });
+    await expect(p0).rejects.toThrow(/boom/);
+
+    // The pool self-heals: a replacement worker is spawned to keep the
+    // pool at full strength, rather than leaving the dead one in rotation.
+    expect(FakeWorker.instances.length).toBe(initialCount + 1);
+    deadWorker.postMessage.mockClear();
+
+    // The next dispatch must never be routed back to the dead worker, and
+    // must actually be able to complete — proving the pool did not just
+    // silently start black-holing every Nth request.
+    const p1 = client.encode("b", fakeFile(), fakeSource, fakeSettings);
+    expect(deadWorker.postMessage).not.toHaveBeenCalled();
+
+    const recipient = FakeWorker.instances.find(
+      (w) => w !== deadWorker && w.postMessage.mock.calls.length > 0,
+    );
+    expect(recipient).toBeDefined();
+    const [sentMessage] = recipient!.postMessage.mock.calls.at(-1)!;
+    recipient!.onmessage?.({
+      data: { type: "done", id: sentMessage.id, generation: sentMessage.generation, result: fakeResult(9) },
+    });
+
+    await expect(p1).resolves.toEqual(fakeResult(9));
+    client.dispose();
+  });
 });
