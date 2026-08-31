@@ -79,7 +79,7 @@ const fakeResult = (n: number): EncodeResult => ({
   width: 10,
   height: 10,
   mime: "image/png",
-  keptOriginal: false,
+  outcome: "encoded",
 });
 
 describe("EncodeClient — fallback (main-thread) path", () => {

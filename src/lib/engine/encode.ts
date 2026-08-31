@@ -24,7 +24,7 @@ export async function encodeOne(
       width: source.width,
       height: source.height,
       mime: source.type,
-      keptOriginal: true,
+      outcome: "passthrough",
     };
   }
 
@@ -71,11 +71,11 @@ export async function encodeOne(
         width: source.width,
         height: source.height,
         mime: source.type,
-        keptOriginal: true,
+        outcome: "kept",
       };
     }
 
-    return { blob, size: blob.size, width, height, mime, keptOriginal: false };
+    return { blob, size: blob.size, width, height, mime, outcome: "encoded" };
   } finally {
     bitmap.close();
   }

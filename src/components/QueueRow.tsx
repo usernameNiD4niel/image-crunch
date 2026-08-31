@@ -30,7 +30,7 @@ export function QueueRow({ index, item, expanded, onToggle, onDownload, onRemove
 
       <span className="data col-span-3 text-[0.8125rem] text-ink-60">
         {item.source.width}×{item.source.height}
-        {result && !result.keptOriginal && ` → ${result.width}×${result.height}`}
+        {result?.outcome === "encoded" && ` → ${result.width}×${result.height}`}
       </span>
 
       <span className="data col-span-2 text-[0.8125rem]">
@@ -48,8 +48,13 @@ export function QueueRow({ index, item, expanded, onToggle, onDownload, onRemove
       </span>
 
       <span className="data col-span-1 text-right">
+        {/* A passthrough was never decoded, so there is no percentage to
+            report — a dash, not a "0.0%" that would imply we tried. A kept
+            original WAS re-encoded, so its (zero or negative) figure is real
+            and gets shown, but never in --signal: it is not a saving. */}
         {item.status === "passthrough" && <span className="text-ink-38">—</span>}
-        {result && !result.keptOriginal && (
+        {item.status === "kept" && <span className="text-ink-60">{formatPercent(percent)}</span>}
+        {result?.outcome === "encoded" && (
           <span className={percent >= 0 ? "text-signal" : "text-ink-60"}>{formatPercent(percent)}</span>
         )}
       </span>
@@ -80,6 +85,12 @@ export function QueueRow({ index, item, expanded, onToggle, onDownload, onRemove
 
       {item.status === "passthrough" && (
         <p className="data col-span-12 text-[0.8125rem] text-ink-38">passthrough — no gain</p>
+      )}
+
+      {item.status === "kept" && (
+        <p className="data col-span-12 text-[0.8125rem] text-ink-60">
+          kept original — re-encoding did not make this file smaller
+        </p>
       )}
 
       {item.status === "error" && (

@@ -24,7 +24,7 @@ function result(overrides: Partial<EncodeResult> = {}): EncodeResult {
     width: 800,
     height: 600,
     mime: "image/jpeg",
-    keptOriginal: false,
+    outcome: "encoded",
     ...overrides,
   };
 }

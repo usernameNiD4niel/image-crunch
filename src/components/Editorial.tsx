@@ -7,7 +7,7 @@ const ENTRIES = [
   {
     n: "02",
     title: "Which format should you use",
-    body: "WebP is smaller than both JPG and PNG at matched quality and is supported everywhere that matters. Choose JPG for photographs headed somewhere old. Choose PNG when you need transparency or crisp flat colour — screenshots, logos, diagrams.",
+    body: "WebP is smaller than both JPG and PNG at matched quality and is supported everywhere that matters, so it is what Image Crunch converts to unless you say otherwise. Choose JPG for photographs headed somewhere old. Choose PNG when you need transparency or crisp flat colour — screenshots, logos, diagrams. Choose KEEP to leave every file in the format it arrived in.",
   },
   {
     n: "03",

@@ -26,7 +26,7 @@ describe("QueueRow", () => {
         item={baseItem({
           status: "passthrough",
           source: { name: "icon.svg", type: "image/svg+xml", size: 500, width: 32, height: 32 },
-          result: { blob: new Blob(), size: 500, width: 32, height: 32, mime: "image/svg+xml", keptOriginal: true },
+          result: { blob: new Blob(), size: 500, width: 32, height: 32, mime: "image/svg+xml", outcome: "passthrough" },
         })}
         expanded={false}
         onToggle={noop}
@@ -37,6 +37,31 @@ describe("QueueRow", () => {
 
     expect(screen.getByText("passthrough — no gain")).toBeTruthy();
     expect(screen.getByText("—")).toBeTruthy();
+    expect(screen.queryByText(/kept original/)).toBeNull();
+  });
+
+  it("does not call a re-encoded-but-not-smaller file a passthrough", () => {
+    render(
+      <QueueRow
+        index={0}
+        item={baseItem({
+          status: "kept",
+          source: { name: "photo.png", type: "image/png", size: 1000, width: 800, height: 600 },
+          result: { blob: new Blob(), size: 1000, width: 800, height: 600, mime: "image/png", outcome: "kept" },
+        })}
+        expanded={false}
+        onToggle={noop}
+        onDownload={noop}
+        onRemove={noop}
+      />,
+    );
+
+    expect(screen.getByText("kept original — re-encoding did not make this file smaller")).toBeTruthy();
+    expect(screen.queryByText("passthrough — no gain")).toBeNull();
+    // Unlike a passthrough, this file WAS measured, so it reports a figure
+    // rather than a dash.
+    expect(screen.queryByText("—")).toBeNull();
+    expect(screen.getByText("0.0%")).toBeTruthy();
   });
 
   it("shows a plus sign, not a mangled double minus, when the encode grew the file", () => {
@@ -46,7 +71,7 @@ describe("QueueRow", () => {
         item={baseItem({
           status: "done",
           source: { name: "photo.png", type: "image/png", size: 1000, width: 800, height: 600 },
-          result: { blob: new Blob(), size: 1042, width: 800, height: 600, mime: "image/png", keptOriginal: false },
+          result: { blob: new Blob(), size: 1042, width: 800, height: 600, mime: "image/png", outcome: "encoded" },
         })}
         expanded={false}
         onToggle={noop}
@@ -100,7 +125,7 @@ describe("QueueRow", () => {
         index={0}
         item={baseItem({
           status: "done",
-          result: { blob: new Blob(), size: 900, width: 800, height: 600, mime: "image/png", keptOriginal: false },
+          result: { blob: new Blob(), size: 900, width: 800, height: 600, mime: "image/png", outcome: "encoded" },
         })}
         expanded={false}
         onToggle={noop}
@@ -118,7 +143,7 @@ describe("QueueRow", () => {
         index={0}
         item={baseItem({
           status: "done",
-          result: { blob: new Blob(), size: 900, width: 800, height: 600, mime: "image/png", keptOriginal: false },
+          result: { blob: new Blob(), size: 900, width: 800, height: 600, mime: "image/png", outcome: "encoded" },
         })}
         expanded={true}
         onToggle={noop}

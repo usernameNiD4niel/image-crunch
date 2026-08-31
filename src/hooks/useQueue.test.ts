@@ -43,11 +43,53 @@ describe("queueReducer", () => {
         width: 100,
         height: 100,
         mime: "image/png",
-        keptOriginal: false,
+        outcome: "encoded",
       },
     });
     expect(state.items[0].status).toBe("done");
     expect(state.items[0].result?.size).toBe(250);
+  });
+
+  // These two must never collapse into one status: a vector that was never
+  // decoded and a raster that was decoded and came back no smaller are
+  // different facts, and the row copy for each says something different.
+  it("marks a never-decoded passthrough result as passthrough", () => {
+    const added = queueReducer(initialQueueState, { type: "add", items: [item("a")] });
+    const state = queueReducer(added, {
+      type: "result",
+      id: "a",
+      result: {
+        blob: new Blob(),
+        size: 1000,
+        width: 100,
+        height: 100,
+        mime: "image/svg+xml",
+        outcome: "passthrough",
+      },
+    });
+    expect(state.items[0].status).toBe("passthrough");
+  });
+
+  it("marks a re-encoded-but-not-smaller result as kept, not passthrough", () => {
+    const added = queueReducer(initialQueueState, { type: "add", items: [item("a")] });
+    const state = queueReducer(added, {
+      type: "result",
+      id: "a",
+      result: {
+        blob: new Blob(),
+        size: 1000,
+        width: 100,
+        height: 100,
+        mime: "image/png",
+        outcome: "kept",
+      },
+    });
+    expect(state.items[0].status).toBe("kept");
+    expect(state.items[0].status).not.toBe("passthrough");
+  });
+
+  it("defaults the output format to WebP so a first run can actually shrink", () => {
+    expect(initialQueueState.settings.format).toBe("image/webp");
   });
 
   it("computes totals across completed items only", () => {
@@ -55,7 +97,7 @@ describe("queueReducer", () => {
     state = queueReducer(state, {
       type: "result",
       id: "a",
-      result: { blob: new Blob(), size: 250, width: 1, height: 1, mime: "image/png", keptOriginal: false },
+      result: { blob: new Blob(), size: 250, width: 1, height: 1, mime: "image/png", outcome: "encoded" },
     });
     const totals = state.items
       .filter((i) => i.status === "done")
@@ -92,7 +134,7 @@ const { encodeMock, MockEncodeClient, MockStaleResult } = vi.hoisted(() => {
     width: 1,
     height: 1,
     mime: "image/png",
-    keptOriginal: false,
+    outcome: "encoded",
   }));
 
   class MockEncodeClient {

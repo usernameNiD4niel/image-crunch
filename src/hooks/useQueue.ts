@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
-import type { EncodeResult, EncodeSettings, QueueItem } from "@/lib/engine/types";
+import type { EncodeOutcome, EncodeResult, EncodeSettings, ItemStatus, QueueItem } from "@/lib/engine/types";
 import { MAX_QUEUE, outputFilename, savingsPercent } from "@/lib/engine/plan";
 import { EncodeClient, releaseAll, releaseUrl, StaleResult } from "@/lib/engine/client";
 import { bundleZip } from "@/lib/engine/zip";
@@ -12,8 +12,24 @@ export interface QueueState {
 
 export const initialQueueState: QueueState = {
   items: [],
-  settings: { quality: 85, resize: "none", format: "keep" },
+  // WebP by default, not "keep": with "keep" a PNG source can essentially
+  // never shrink (canvas's PNG encoder does not beat a well-encoded source),
+  // so a first run would read 0.0% on every row and look broken. Editorial
+  // entry 02 already recommends WebP; the default now matches the app's own
+  // advice. KEEP remains one click away for anyone who needs the format
+  // preserved.
+  settings: { quality: 85, resize: "none", format: "image/webp" },
   notice: null,
+};
+
+// One row per engine outcome, deliberately explicit: "passthrough" (never
+// decoded) and "kept" (decoded, re-encoded, output was no smaller) both ship
+// the original bytes but are different facts about what happened, and the
+// queue must be able to say which.
+const STATUS_BY_OUTCOME: Record<EncodeOutcome, ItemStatus> = {
+  encoded: "done",
+  passthrough: "passthrough",
+  kept: "kept",
 };
 
 export type QueueAction =
@@ -52,7 +68,7 @@ export function queueReducer(state: QueueState, action: QueueAction): QueueState
         ...state,
         items: state.items.map((i) =>
           i.id === action.id
-            ? { ...i, status: action.result.keptOriginal ? "passthrough" : "done", result: action.result }
+            ? { ...i, status: STATUS_BY_OUTCOME[action.result.outcome], result: action.result }
             : i,
         ),
       };
