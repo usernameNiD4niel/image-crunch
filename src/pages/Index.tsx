@@ -12,13 +12,18 @@ const Index = () => {
   const working = items.filter((i) => i.status === "working").length;
   const errors = items.filter((i) => i.status === "error").length;
 
-  const onReject = useCallback((message: string) => dispatch({ type: "notice", message }), [dispatch]);
-
   // Never call URL.createObjectURL during render — it must run exactly
   // once per accepted file, inside this handler, wrapped in trackUrl so
   // the registry can revoke it later (see engine/client.ts).
+  //
+  // A single drop must produce a single notice. DropZone's screening
+  // (oversized/unsupported files) happens synchronously and is reported
+  // via `screeningMessage`; the dimension read below is async and can
+  // itself reject per-file (a corrupt file). Both are composed into one
+  // sentence and dispatched exactly once, after the dimension reads
+  // settle, so the second never silently clobbers the first.
   const onFiles = useCallback(
-    async (files: File[]) => {
+    async (files: File[], screeningMessage: string | null) => {
       const built = await Promise.all(
         files.map(async (file): Promise<QueueItem | null> => {
           try {
@@ -38,7 +43,12 @@ const Index = () => {
 
       const ok = built.filter((i): i is QueueItem => i !== null);
       const failed = built.length - ok.length;
-      if (failed > 0) dispatch({ type: "notice", message: `${failed} file(s) could not be read.` });
+
+      const parts: string[] = [];
+      if (screeningMessage) parts.push(screeningMessage);
+      if (failed > 0) parts.push(`${failed} file(s) could not be read.`);
+      if (parts.length > 0) dispatch({ type: "notice", message: parts.join(" ") });
+
       if (ok.length > 0) dispatch({ type: "add", items: ok });
     },
     [dispatch],
@@ -70,11 +80,11 @@ const Index = () => {
         )}
 
         {items.length === 0 ? (
-          <DropZone onFiles={onFiles} onReject={onReject} />
+          <DropZone onFiles={onFiles} />
         ) : (
           <>
             <Queue items={items} totals={totals} onDownloadOne={downloadOne} onRemove={removeItem} />
-            <DropZone onFiles={onFiles} onReject={onReject} compact />
+            <DropZone onFiles={onFiles} compact />
           </>
         )}
       </main>

@@ -3,8 +3,16 @@ import { ACCEPTED_TYPES, MAX_FILE_BYTES } from "@/lib/engine/plan";
 import { Empty, EmptyHeader, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
 
 interface DropZoneProps {
-  onFiles: (files: File[]) => void;
-  onReject: (message: string) => void;
+  /**
+   * Called once per drop/pick with the accepted files and, when any files
+   * in that same batch were screened out, a single combined message
+   * describing every category that was rejected (never just the first).
+   * The caller (Index.tsx) is responsible for folding this together with
+   * anything that happens later in the same batch (e.g. unreadable files)
+   * into one final notice, so a single drop never produces more than one
+   * notice that silently clobbers another.
+   */
+  onFiles: (files: File[], screeningMessage: string | null) => void;
   /**
    * Renders the compact "add more" bar shown beneath a non-empty queue,
    * instead of the full idle drop target. Same drag/drop/click behaviour.
@@ -12,7 +20,7 @@ interface DropZoneProps {
   compact?: boolean;
 }
 
-export function DropZone({ onFiles, onReject, compact = false }: DropZoneProps) {
+export function DropZone({ onFiles, compact = false }: DropZoneProps) {
   const [active, setActive] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -21,18 +29,23 @@ export function DropZone({ onFiles, onReject, compact = false }: DropZoneProps) 
       if (!list) return;
       const files = Array.from(list);
       const tooBig = files.filter((f) => f.size > MAX_FILE_BYTES);
-      const wrongType = files.filter((f) => !ACCEPTED_TYPES.includes(f.type));
+      const wrongType = files.filter((f) => f.size <= MAX_FILE_BYTES && !ACCEPTED_TYPES.includes(f.type));
       const ok = files.filter((f) => f.size <= MAX_FILE_BYTES && ACCEPTED_TYPES.includes(f.type));
 
-      if (tooBig.length) onReject(`${tooBig.length} file(s) over 35 MB were skipped.`);
-      else if (wrongType.length) onReject(`${wrongType.length} unsupported file(s) were skipped.`);
+      // Combine every category that was actually rejected into one honest
+      // sentence — a drop with both oversized and unsupported files must
+      // report both, not just whichever check ran first.
+      const rejections: string[] = [];
+      if (tooBig.length) rejections.push(`${tooBig.length} file(s) over 35 MB`);
+      if (wrongType.length) rejections.push(`${wrongType.length} unsupported file(s)`);
+      const screeningMessage = rejections.length ? `${rejections.join(" and ")} skipped.` : null;
 
+      onFiles(ok, screeningMessage);
       if (ok.length) {
-        onFiles(ok);
         document.getElementById("tool")?.scrollIntoView({ behavior: "smooth" });
       }
     },
-    [onFiles, onReject],
+    [onFiles],
   );
 
   // Drop anywhere on the page, at any scroll position.
@@ -74,6 +87,7 @@ export function DropZone({ onFiles, onReject, compact = false }: DropZoneProps) 
       type="file"
       multiple
       accept={ACCEPTED_TYPES.join(",")}
+      tabIndex={-1}
       className="sr-only"
       onChange={(e) => accept(e.target.files)}
     />

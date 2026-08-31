@@ -24,7 +24,9 @@ export function Masthead({ count, working, errors, totals, onDownloadAll }: Mast
               <span className="text-ink-60">
                 {totals.count} FILES · {formatBytes(totals.input)} → {formatBytes(totals.output)}
               </span>
-              <span className="text-signal">{formatPercent(totals.percent)}</span>
+              <span className={totals.percent >= 0 ? "text-signal" : "text-ink-60"}>
+                {formatPercent(totals.percent)}
+              </span>
               <button
                 type="button"
                 onClick={onDownloadAll}

@@ -40,7 +40,9 @@ export function Queue({ items, totals, onDownloadOne, onRemove }: QueueProps) {
         <span className="label">Total</span>
         <span>
           {formatBytes(totals.input)} → {formatBytes(totals.output)}{" "}
-          <span className="text-signal">{formatPercent(totals.percent)}</span>
+          <span className={totals.percent >= 0 ? "text-signal" : "text-ink-60"}>
+            {formatPercent(totals.percent)}
+          </span>
         </span>
       </div>
     </section>
