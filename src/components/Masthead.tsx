@@ -1,4 +1,4 @@
-import { formatBytes } from "@/lib/engine/plan";
+import { formatBytes, formatPercent } from "@/lib/engine/plan";
 
 interface MastheadProps {
   count: number;
@@ -6,16 +6,6 @@ interface MastheadProps {
   errors: number;
   totals: { count: number; input: number; output: number; percent: number };
   onDownloadAll: () => void;
-}
-
-// Formats the aggregate savings figure. Growth reads as growth ("+n%"), not
-// as a mangled saving ("−-n%"): savingsPercent is negative when output grew
-// past input. At (or rounding to) exactly zero, no sign is shown — "0.0%"
-// implies neither a saving nor a loss.
-function formatPercent(percent: number): string {
-  const magnitude = Math.abs(percent).toFixed(1);
-  if (magnitude === "0.0") return "0.0%";
-  return percent >= 0 ? `−${magnitude}%` : `+${magnitude}%`;
 }
 
 export function Masthead({ count, working, errors, totals, onDownloadAll }: MastheadProps) {

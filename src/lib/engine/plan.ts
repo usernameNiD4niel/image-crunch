@@ -75,6 +75,18 @@ export function outputFilename(sourceName: string, mime: string, taken: Set<stri
   return candidate;
 }
 
+// Formats a signed savings percentage honestly: growth reads as growth
+// ("+n%"), never as a mangled saving ("−-n%"). savingsPercent is negative
+// when output grew past input. At (or rounding to) exactly zero, no sign
+// is shown — "0.0%" implies neither a saving nor a loss. Shared by
+// Masthead (the aggregate figure) and QueueRow (the per-row figure) so
+// the sign logic lives in exactly one place.
+export function formatPercent(percent: number): string {
+  const magnitude = Math.abs(percent).toFixed(1);
+  if (magnitude === "0.0") return "0.0%";
+  return percent >= 0 ? `−${magnitude}%` : `+${magnitude}%`;
+}
+
 export function formatBytes(bytes: number): string {
   if (bytes === 0) return "0 B";
   if (bytes < 1024) return `${bytes} B`;
