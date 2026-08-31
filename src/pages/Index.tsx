@@ -3,12 +3,13 @@ import { Masthead } from "@/components/Masthead";
 import { Statement } from "@/components/Statement";
 import { DropZone, getImageDimensions } from "@/components/DropZone";
 import { Queue } from "@/components/Queue";
+import { Controls } from "@/components/Controls";
 import { useQueue } from "@/hooks/useQueue";
 import { trackUrl } from "@/lib/engine/client";
 import type { QueueItem } from "@/lib/engine/types";
 
 const Index = () => {
-  const { items, totals, notice, dispatch, downloadOne, downloadAll, removeItem } = useQueue();
+  const { items, settings, totals, notice, dispatch, downloadOne, downloadAll, removeItem } = useQueue();
   const working = items.filter((i) => i.status === "working").length;
   const errors = items.filter((i) => i.status === "error").length;
 
@@ -85,6 +86,12 @@ const Index = () => {
           <>
             <Queue items={items} totals={totals} onDownloadOne={downloadOne} onRemove={removeItem} />
             <DropZone onFiles={onFiles} compact />
+            <Controls
+              settings={settings}
+              onChange={(patch) => dispatch({ type: "settings", settings: patch })}
+              onDownloadAll={downloadAll}
+              disabled={totals.count === 0}
+            />
           </>
         )}
       </main>
