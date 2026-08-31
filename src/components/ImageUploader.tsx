@@ -1,9 +1,7 @@
 import React, { useCallback, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { Upload, Image as ImageIcon, AlertCircle } from 'lucide-react';
-import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Alert, AlertDescription } from '@/components/ui/alert';
 import { SUPPORTED_FORMATS, getImageDimensions, ImageInfo } from '@/lib/imageUtils';
 
 interface ImageUploaderProps {
@@ -71,8 +69,8 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
 
   return (
     <div className="w-full max-w-2xl mx-auto">
-      <Card>
-        <CardContent className="p-6">
+      <div className="border border-rule">
+        <div className="p-6">
           <div
             {...getRootProps()}
             className={`
@@ -117,13 +115,13 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
           </div>
 
           {error && (
-            <Alert variant="destructive" className="mt-4">
+            <p className="mt-4 flex items-center gap-2 text-signal">
               <AlertCircle className="h-4 w-4" />
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
+              <span>{error}</span>
+            </p>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     </div>
   );
 };

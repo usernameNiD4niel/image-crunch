@@ -1,13 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { Download, Settings, Zap, RefreshCw } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { useToast } from '@/hooks/use-toast';
+import { toast as sonnerToast } from 'sonner';
 import { 
   ImageInfo, 
   CompressedImageResult, 
@@ -17,6 +15,27 @@ import {
   downloadBlob,
   FORMAT_EXTENSIONS 
 } from '@/lib/imageUtils';
+
+// Plain-element stand-ins for the shadcn primitives removed in Task 4.
+// This file is deleted in Task 14; these exist only to keep the build green.
+type DivProps = React.HTMLAttributes<HTMLDivElement>;
+const Card = ({ className = '', ...p }: DivProps) => (
+  <div className={`border border-rule ${className}`} {...p} />
+);
+const CardHeader = ({ className = '', ...p }: DivProps) => (
+  <div className={`p-6 pb-0 ${className}`} {...p} />
+);
+const CardTitle = ({ className = '', ...p }: DivProps) => (
+  <h3 className={`label ${className}`} {...p} />
+);
+const CardContent = ({ className = '', ...p }: DivProps) => (
+  <div className={`p-6 ${className}`} {...p} />
+);
+const Badge = ({ className = '', variant: _variant, ...p }: DivProps & { variant?: string }) => (
+  <span className={`data ${className}`} {...(p as React.HTMLAttributes<HTMLSpanElement>)} />
+);
+const toast = ({ title, description, variant }: { title: string; description?: string; variant?: string }) =>
+  variant === 'destructive' ? sonnerToast.error(title, { description }) : sonnerToast(title, { description });
 
 interface ImageProcessorProps {
   imageInfo: ImageInfo;
@@ -36,7 +55,6 @@ export const ImageProcessor: React.FC<ImageProcessorProps> = ({ imageInfo, onRes
   const [compressedResult, setCompressedResult] = useState<CompressedImageResult | null>(null);
   const [convertedBlob, setConvertedBlob] = useState<Blob | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
-  const { toast } = useToast();
 
   // Auto-compress when quality changes
   useEffect(() => {
@@ -207,7 +225,7 @@ export const ImageProcessor: React.FC<ImageProcessorProps> = ({ imageInfo, onRes
               <Label>Quality: {quality[0]}%</Label>
               <Slider
                 value={quality}
-                onValueChange={setQuality}
+                onValueChange={(v) => setQuality(Array.isArray(v) ? [...v] : [v])}
                 max={100}
                 min={10}
                 step={5}
