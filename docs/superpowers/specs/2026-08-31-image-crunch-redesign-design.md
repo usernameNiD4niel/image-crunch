@@ -173,8 +173,22 @@ These replace behavior that currently misreports what the app did:
   as a feature.
 - **GIF is removed from output formats.** Canvas has no GIF encoder; the current
   build ships PNG bytes under a `.gif` name. `KEEP` (don't change format)
-  becomes the default option.
-- **Files that grow** show `+4.2% — kept original` and download the original.
+  replaces it as an option.
+- **WebP is the default output format.** *(Amended during implementation, after
+  running the finished app.)* This section originally made `KEEP` the default.
+  In practice a PNG source under `KEEP` can essentially never shrink — canvas's
+  PNG encoder does not beat a well-encoded source — so the app's first run
+  reported 0.0% on every row and read as broken, while switching to WebP gave
+  −95.2% on the same files. Defaulting to WebP means the tool's behaviour
+  matches the advice editorial entry 02 already gives. The trade-off, accepted
+  deliberately: the app changes the file's format unless the user picks `KEEP`.
+- **Files that grow, or simply fail to shrink, keep the original** — and say so
+  in their own words. *(Amended during implementation.)* Originally this case
+  shared the `passthrough — no gain` copy with SVG/ICO, which was inaccurate: a
+  raster file that was decoded and re-encoded has not been "passed through". The
+  engine now reports three distinct outcomes — `encoded`, `passthrough`, `kept` —
+  and a non-shrinking raster reads `kept original — re-encoding did not make this
+  file smaller`, with its real signed percentage.
 - **Resize is explicit.** The current silent 1920px clamp becomes a visible
   `RESIZE` control, and every row shows real input → output dimensions.
 - **The size limit is stated correctly.** Current copy says 10MB; the code
