@@ -2,7 +2,7 @@ const ENTRIES = [
   {
     n: "01",
     title: "Nothing leaves your browser",
-    body: "Image Crunch has no server. Your files are decoded, resized and re-encoded by your own device, and the results never travel anywhere. Close the tab and nothing remains — there is no account, no history, and nothing stored.",
+    body: "Image Crunch has no server. Raster files are decoded, resized and re-encoded by your own device; SVG and icons pass through unchanged. The results never travel anywhere. Close the tab and nothing remains — there is no account, no history, and nothing stored.",
   },
   {
     n: "02",
@@ -21,9 +21,9 @@ export function Editorial() {
     <section className="mx-auto max-w-[1440px] px-6">
       {ENTRIES.map((entry) => (
         <article key={entry.n} className="grid grid-cols-1 gap-4 border-t border-rule py-10 md:grid-cols-12">
-          <span className="data col-span-1 text-ink-38">{entry.n}</span>
-          <h2 className="col-span-4 text-[2.25rem] leading-tight tracking-[-0.02em]">{entry.title}</h2>
-          <p className="col-span-6 col-start-7 max-w-[62ch] text-ink-60">{entry.body}</p>
+          <span className="data md:col-span-1 text-ink-38">{entry.n}</span>
+          <h2 className="md:col-span-4 text-[2.25rem] leading-tight tracking-[-0.02em]">{entry.title}</h2>
+          <p className="md:col-span-6 md:col-start-7 max-w-[62ch] text-ink-60">{entry.body}</p>
         </article>
       ))}
 
