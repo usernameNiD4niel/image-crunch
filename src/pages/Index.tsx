@@ -4,6 +4,7 @@ import { Statement } from "@/components/Statement";
 import { DropZone, getImageDimensions } from "@/components/DropZone";
 import { Queue } from "@/components/Queue";
 import { Controls } from "@/components/Controls";
+import { Editorial } from "@/components/Editorial";
 import { useQueue } from "@/hooks/useQueue";
 import { trackUrl } from "@/lib/engine/client";
 import type { QueueItem } from "@/lib/engine/types";
@@ -95,6 +96,7 @@ const Index = () => {
           </>
         )}
       </main>
+      <Editorial />
     </>
   );
 };
