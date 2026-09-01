@@ -71,6 +71,34 @@ Three findings that change the design:
 Quality was verified by sampling: interior RGB in the cut-out is
 byte-identical to the source, and only alpha differs.
 
+### Verified again after implementation (2026-09-01)
+
+The finished feature was exercised in Chrome against the real app, not the
+spike:
+
+- A 1280x1709 photograph with fur edges cut out cleanly; the row reported
+  `1280x1709 -> 1280x1709`, so no dimension was lost.
+- **Pixel identity holds end to end.** With the format set to PNG (lossless),
+  three interior pixels of the downloaded output were byte-identical to the
+  source, and their alpha came back a true **255** — the q8 build's 254 cap
+  is absent on the fp16 path, as predicted.
+- **Format substitution works and says so.** With FORMAT set to JPG the row
+  read `cut out - output as WEBP (JPG has no transparency)` and the pane
+  captions confirmed `WEBP`; switching to WebP dropped the explanatory
+  clause, since nothing was substituted.
+- **The transparent preview reads as transparent** — checkerboard behind the
+  compressed pane only.
+- **20 megapixels is fine.** A 5000x4000 source cut out in ~3.0s wall clock
+  including the re-encode, dimensions preserved, no crash and no memory
+  spike. The megapixel cap the risk section anticipated is not needed yet.
+- **Reversible.** Restoring dropped the cut-out, flipped the control back to
+  `Cut out background from ...`, and re-encoded from the original.
+- The first-use notice fired once, naming ~85 MB and the WebGPU path.
+
+Not re-measured after implementation: the **WASM fallback timing**. WebGPU
+could not be disabled from this session, so the ~5s figure remains the
+spike's measurement rather than the shipped code's.
+
 Sources are listed at the end.
 
 ## Architecture
