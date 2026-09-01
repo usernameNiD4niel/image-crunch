@@ -55,4 +55,12 @@ export interface QueueItem {
   status: ItemStatus;
   result?: EncodeResult;
   error?: string;
+  /** The background-removed version of `file`, once one exists. */
+  cutout?: { blob: Blob; width: number; height: number };
+  /**
+   * Whether background removal is running for this row. Deliberately not a
+   * `status`: a row can be re-encoding AND having its background removed,
+   * and one field cannot say both.
+   */
+  matting?: boolean;
 }

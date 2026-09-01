@@ -322,6 +322,55 @@ describe("queueReducer settings changes", () => {
   });
 });
 
+describe("queueReducer cut-outs", () => {
+  const cutout = { blob: new Blob(["cut"]), width: 100, height: 100 };
+
+  function queued() {
+    return queueReducer(initialQueueState, { type: "add", items: [item("a"), item("b")] });
+  }
+
+  it("marks only the requested row as matting", () => {
+    const state = queueReducer(queued(), { type: "matte-start", id: "a" });
+    expect(state.items[0].matting).toBe(true);
+    expect(state.items[1].matting).toBeFalsy();
+  });
+
+  it("stores the cut-out, clears the flag and returns the row to queued for re-encoding", () => {
+    const started = queueReducer(queued(), { type: "matte-start", id: "a" });
+    const state = queueReducer(started, { type: "matte-done", id: "a", cutout });
+
+    expect(state.items[0].cutout).toBe(cutout);
+    expect(state.items[0].matting).toBe(false);
+    expect(state.items[0].status).toBe("queued");
+  });
+
+  it("reports a failure on the row without leaving it stuck busy", () => {
+    const started = queueReducer(queued(), { type: "matte-start", id: "a" });
+    const state = queueReducer(started, { type: "matte-error", id: "a", message: "out of memory" });
+
+    expect(state.items[0].matting).toBe(false);
+    expect(state.items[0].status).toBe("error");
+    expect(state.items[0].error).toBe("out of memory");
+  });
+
+  // The action is reversible: restoring puts the original back and sends
+  // the row to be encoded again from it.
+  it("drops the cut-out and requeues the row on matte-clear", () => {
+    const started = queueReducer(queued(), { type: "matte-start", id: "a" });
+    const done = queueReducer(started, { type: "matte-done", id: "a", cutout });
+    const state = queueReducer(done, { type: "matte-clear", id: "a" });
+
+    expect(state.items[0].cutout).toBeUndefined();
+    expect(state.items[0].status).toBe("queued");
+  });
+
+  it("leaves other rows untouched throughout", () => {
+    const started = queueReducer(queued(), { type: "matte-start", id: "a" });
+    const done = queueReducer(started, { type: "matte-done", id: "a", cutout });
+    expect(done.items[1]).toEqual(queued().items[1]);
+  });
+});
+
 describe("useQueue while a re-encode is in flight", () => {
   afterEach(() => {
     vi.useRealTimers();

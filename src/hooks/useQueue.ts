@@ -65,7 +65,11 @@ export type QueueAction =
   | { type: "settings"; settings: Partial<EncodeSettings> }
   | { type: "notice"; message: string }
   | { type: "dismiss-notice"; id: number }
-  | { type: "clear-notices" };
+  | { type: "clear-notices" }
+  | { type: "matte-start"; id: string }
+  | { type: "matte-done"; id: string; cutout: { blob: Blob; width: number; height: number } }
+  | { type: "matte-error"; id: string; message: string }
+  | { type: "matte-clear"; id: string };
 
 export function queueReducer(state: QueueState, action: QueueAction): QueueState {
   switch (action.type) {
@@ -139,6 +143,41 @@ export function queueReducer(state: QueueState, action: QueueAction): QueueState
       return { ...state, notices: state.notices.filter((n) => n.id !== action.id) };
     case "clear-notices":
       return state.notices.length === 0 ? state : { ...state, notices: [] };
+    case "matte-start":
+      return {
+        ...state,
+        items: state.items.map((i) => (i.id === action.id ? { ...i, matting: true } : i)),
+      };
+    case "matte-done":
+      return {
+        ...state,
+        items: state.items.map((i) =>
+          i.id === action.id
+            ? // Back to "queued", not "done": the row's stored result was
+              // encoded from the ORIGINAL and no longer describes what this
+              // row is. currentResult withholds it until the re-encode lands.
+              { ...i, matting: false, cutout: action.cutout, status: "queued", error: undefined }
+            : i,
+        ),
+      };
+    case "matte-error":
+      return {
+        ...state,
+        items: state.items.map((i) =>
+          i.id === action.id
+            ? { ...i, matting: false, status: "error", error: action.message, result: undefined }
+            : i,
+        ),
+      };
+    case "matte-clear":
+      return {
+        ...state,
+        items: state.items.map((i) =>
+          i.id === action.id
+            ? { ...i, cutout: undefined, matting: false, status: "queued", error: undefined }
+            : i,
+        ),
+      };
     default:
       return state;
   }
