@@ -72,7 +72,7 @@ class FakeWorker {
 
 const fakeFile = () => new File(["x"], "a.png", { type: "image/png" });
 const fakeSource: SourceInfo = { name: "a.png", type: "image/png", size: 1, width: 10, height: 10 };
-const fakeSettings: EncodeSettings = { quality: 80, resize: "none", format: "keep" };
+const fakeSettings: EncodeSettings = { quality: 80, resize: "none", format: "keep", icon: 64 };
 const fakeResult = (n: number): EncodeResult => ({
   blob: new Blob([String(n)]),
   size: n,

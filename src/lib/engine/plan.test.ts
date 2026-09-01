@@ -2,6 +2,8 @@ import { describe, it, expect } from "vitest";
 import type { EncodeResult, ItemStatus, QueueItem } from "./types";
 import {
   formatLabel,
+  ICON_SIZES,
+  iconBundleSizes,
   isPassthrough,
   resolveOutputFormat,
   targetDimensions,
@@ -218,5 +220,36 @@ describe("formatLabel", () => {
 
   it("falls back to the mime subtype for anything unmapped", () => {
     expect(formatLabel("image/avif")).toBe("AVIF");
+  });
+});
+
+// An .ico is a bundle: the picked size is the LARGEST image in it, and the
+// standard smaller sizes ride along so Windows and browsers can choose.
+describe("icon bundle sizes", () => {
+  it("offers the six standard icon sizes", () => {
+    expect(ICON_SIZES).toEqual([16, 32, 48, 64, 128, 256]);
+  });
+
+  it("includes every standard size up to and including the one picked", () => {
+    expect(iconBundleSizes(64)).toEqual([16, 32, 48, 64]);
+    expect(iconBundleSizes(256)).toEqual([16, 32, 48, 64, 128, 256]);
+  });
+
+  it("is just the one image at the smallest size", () => {
+    expect(iconBundleSizes(16)).toEqual([16]);
+  });
+});
+
+describe("resolveOutputFormat for ICO", () => {
+  it("converts a raster source to ICO", () => {
+    expect(resolveOutputFormat("image/png", "image/x-icon")).toBe("image/x-icon");
+    expect(resolveOutputFormat("image/jpeg", "image/x-icon")).toBe("image/x-icon");
+  });
+
+  // Passthrough still wins: canvas cannot reliably decode an SVG, and
+  // re-wrapping an .ico that is already an .ico buys nothing.
+  it("leaves passthrough sources alone", () => {
+    expect(resolveOutputFormat("image/svg+xml", "image/x-icon")).toBe("image/svg+xml");
+    expect(resolveOutputFormat("image/x-icon", "image/x-icon")).toBe("image/x-icon");
   });
 });

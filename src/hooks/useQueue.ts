@@ -32,7 +32,7 @@ export const initialQueueState: QueueState = {
   // entry 02 already recommends WebP; the default now matches the app's own
   // advice. KEEP remains one click away for anyone who needs the format
   // preserved.
-  settings: { quality: 85, resize: "none", format: "image/webp" },
+  settings: { quality: 85, resize: "none", format: "image/webp", icon: 64 },
   notices: [],
   nextNoticeId: 1,
 };

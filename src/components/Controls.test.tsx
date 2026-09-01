@@ -6,14 +6,14 @@ import type { EncodeSettings } from "@/lib/engine/types";
 afterEach(cleanup);
 
 function baseSettings(overrides: Partial<EncodeSettings> = {}): EncodeSettings {
-  return { quality: 85, resize: "none", format: "keep", ...overrides };
+  return { quality: 85, resize: "none", format: "keep", icon: 64, ...overrides };
 }
 
 describe("Controls", () => {
   it("calls onChange with a resize patch when a resize option is clicked", () => {
     const onChange = vi.fn();
     render(
-      <Controls settings={baseSettings()} onChange={onChange} onDownloadAll={() => {}} disabled={false} />,
+      <Controls settings={baseSettings()} onChange={onChange} onDownloadAll={() => {}} onReset={() => {}} disabled={false} />,
     );
 
     fireEvent.click(screen.getByRole("radio", { name: "2048" }));
@@ -23,7 +23,7 @@ describe("Controls", () => {
   it("calls onChange with a format patch when a format option is clicked", () => {
     const onChange = vi.fn();
     render(
-      <Controls settings={baseSettings()} onChange={onChange} onDownloadAll={() => {}} disabled={false} />,
+      <Controls settings={baseSettings()} onChange={onChange} onDownloadAll={() => {}} onReset={() => {}} disabled={false} />,
     );
 
     fireEvent.click(screen.getByRole("radio", { name: "PNG" }));
@@ -36,6 +36,7 @@ describe("Controls", () => {
         settings={baseSettings({ resize: 1280, format: "image/webp" })}
         onChange={() => {}}
         onDownloadAll={() => {}}
+        onReset={() => {}}
         disabled={false}
       />,
     );
@@ -54,6 +55,7 @@ describe("Controls", () => {
         settings={baseSettings({ resize: 2048, format: "image/png" })}
         onChange={() => {}}
         onDownloadAll={() => {}}
+        onReset={() => {}}
         disabled={false}
       />,
     );
@@ -67,7 +69,7 @@ describe("Controls", () => {
   it("selects and focuses the next option on ArrowRight", () => {
     const onChange = vi.fn();
     render(
-      <Controls settings={baseSettings({ resize: "none" })} onChange={onChange} onDownloadAll={() => {}} disabled={false} />,
+      <Controls settings={baseSettings({ resize: "none" })} onChange={onChange} onDownloadAll={() => {}} onReset={() => {}} disabled={false} />,
     );
 
     const none = screen.getByRole("radio", { name: "None" });
@@ -81,7 +83,7 @@ describe("Controls", () => {
   it("wraps from the first option to the last on ArrowLeft", () => {
     const onChange = vi.fn();
     render(
-      <Controls settings={baseSettings({ format: "keep" })} onChange={onChange} onDownloadAll={() => {}} disabled={false} />,
+      <Controls settings={baseSettings({ format: "keep" })} onChange={onChange} onDownloadAll={() => {}} onReset={() => {}} disabled={false} />,
     );
 
     const keep = screen.getByRole("radio", { name: "Keep" });
@@ -95,7 +97,7 @@ describe("Controls", () => {
   it("jumps to the first and last option on Home and End", () => {
     const onChange = vi.fn();
     render(
-      <Controls settings={baseSettings({ resize: 2048 })} onChange={onChange} onDownloadAll={() => {}} disabled={false} />,
+      <Controls settings={baseSettings({ resize: 2048 })} onChange={onChange} onDownloadAll={() => {}} onReset={() => {}} disabled={false} />,
     );
 
     const selected = screen.getByRole("radio", { name: "2048" });
@@ -110,7 +112,7 @@ describe("Controls", () => {
   it("leaves keys it does not own to the browser", () => {
     const onChange = vi.fn();
     render(
-      <Controls settings={baseSettings({ resize: "none" })} onChange={onChange} onDownloadAll={() => {}} disabled={false} />,
+      <Controls settings={baseSettings({ resize: "none" })} onChange={onChange} onDownloadAll={() => {}} onReset={() => {}} disabled={false} />,
     );
 
     fireEvent.keyDown(screen.getByRole("radio", { name: "None" }), { key: "Tab" });
@@ -120,7 +122,7 @@ describe("Controls", () => {
   it("calls onChange with a quality patch when the slider value changes via keyboard", () => {
     const onChange = vi.fn();
     const { container } = render(
-      <Controls settings={baseSettings({ quality: 50 })} onChange={onChange} onDownloadAll={() => {}} disabled={false} />,
+      <Controls settings={baseSettings({ quality: 50 })} onChange={onChange} onDownloadAll={() => {}} onReset={() => {}} disabled={false} />,
     );
 
     // Base UI's Slider.Thumb keeps its nested <input type="range"> hidden
@@ -138,7 +140,7 @@ describe("Controls", () => {
 
   it("shows the current quality value in the .data style", () => {
     render(
-      <Controls settings={baseSettings({ quality: 72 })} onChange={() => {}} onDownloadAll={() => {}} disabled={false} />,
+      <Controls settings={baseSettings({ quality: 72 })} onChange={() => {}} onDownloadAll={() => {}} onReset={() => {}} disabled={false} />,
     );
     const value = screen.getByText("72");
     expect(value.className.split(" ")).toContain("data");
@@ -146,7 +148,7 @@ describe("Controls", () => {
 
   it("disables the download-all button when the queue is empty", () => {
     render(
-      <Controls settings={baseSettings()} onChange={() => {}} onDownloadAll={() => {}} disabled={true} />,
+      <Controls settings={baseSettings()} onChange={() => {}} onDownloadAll={() => {}} onReset={() => {}} disabled={true} />,
     );
     const button = screen.getByRole("button", { name: /Zip/i }) as HTMLButtonElement;
     expect(button.disabled).toBe(true);
@@ -155,7 +157,7 @@ describe("Controls", () => {
   it("enables and triggers the download-all button when the queue has files", () => {
     const onDownloadAll = vi.fn();
     render(
-      <Controls settings={baseSettings()} onChange={() => {}} onDownloadAll={onDownloadAll} disabled={false} />,
+      <Controls settings={baseSettings()} onChange={() => {}} onDownloadAll={onDownloadAll} onReset={() => {}} disabled={false} />,
     );
     const button = screen.getByRole("button", { name: /Zip/i }) as HTMLButtonElement;
     expect(button.disabled).toBe(false);

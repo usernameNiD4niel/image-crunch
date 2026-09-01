@@ -284,7 +284,7 @@ describe("queueReducer reset", () => {
   it("keeps the settings — reset clears files, not preferences", () => {
     const tuned = queueReducer(initialQueueState, { type: "settings", settings: { quality: 40, format: "image/png" } });
     const state = queueReducer(tuned, { type: "reset" });
-    expect(state.settings).toEqual({ quality: 40, resize: "none", format: "image/png" });
+    expect(state.settings).toEqual({ quality: 40, resize: "none", format: "image/png", icon: 64 });
   });
 });
 

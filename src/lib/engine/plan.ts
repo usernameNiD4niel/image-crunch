@@ -1,4 +1,4 @@
-import type { EncodeResult, OutputFormat, QueueItem, ResizePreset } from "./types";
+import type { EncodeResult, IconSize, OutputFormat, QueueItem, ResizePreset } from "./types";
 
 export const MAX_FILE_BYTES = 35 * 1024 * 1024;
 export const MAX_QUEUE = 30;
@@ -23,6 +23,20 @@ const EXTENSIONS: Record<string, string> = {
   "image/x-icon": "ico",
   "image/vnd.microsoft.icon": "ico",
 };
+
+// The sizes Windows and browsers actually look for in an .ico, smallest
+// first. 256 is the format's ceiling (see ico.ts).
+export const ICON_SIZES: IconSize[] = [16, 32, 48, 64, 128, 256];
+
+/**
+ * The images one .ico should contain given the size the user picked. The
+ * pick is the LARGEST image in the bundle and the standard sizes below it
+ * ride along, so a 64px icon is four images and still a small file, while a
+ * 256px one is the full favicon.ico set.
+ */
+export function iconBundleSizes(largest: IconSize): IconSize[] {
+  return ICON_SIZES.filter((size) => size <= largest);
+}
 
 export function isPassthrough(type: string): boolean {
   return PASSTHROUGH_TYPES.includes(type);

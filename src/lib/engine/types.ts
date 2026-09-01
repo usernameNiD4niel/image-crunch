@@ -1,10 +1,16 @@
-export type OutputFormat = "keep" | "image/jpeg" | "image/png" | "image/webp";
+export type OutputFormat = "keep" | "image/jpeg" | "image/png" | "image/webp" | "image/x-icon";
 export type ResizePreset = "none" | 2048 | 1280;
+/** The largest image in an .ico bundle; the standard smaller sizes ride along. */
+export type IconSize = 16 | 32 | 48 | 64 | 128 | 256;
 
 export interface EncodeSettings {
   quality: number; // 10–100
   resize: ResizePreset;
   format: OutputFormat;
+  // Only consulted when format is "image/x-icon". An .ico carries lossless
+  // PNGs at fixed square sizes, so neither `quality` nor `resize` applies to
+  // it — the icon size is what makes an icon small.
+  icon: IconSize;
 }
 
 export interface SourceInfo {
