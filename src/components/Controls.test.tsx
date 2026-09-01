@@ -45,6 +45,78 @@ describe("Controls", () => {
     expect(screen.getByRole("radio", { name: "None" }).getAttribute("aria-checked")).toBe("false");
   });
 
+  // A radiogroup is ONE tab stop: Tab reaches the checked option and the
+  // arrow keys move within the group. Seven separate tab stops across Resize
+  // and Format is the wrong shape for the role we claim.
+  it("puts only the checked option of each group in the tab order", () => {
+    render(
+      <Controls
+        settings={baseSettings({ resize: 2048, format: "image/png" })}
+        onChange={() => {}}
+        onDownloadAll={() => {}}
+        disabled={false}
+      />,
+    );
+
+    expect(screen.getByRole("radio", { name: "2048" }).getAttribute("tabindex")).toBe("0");
+    expect(screen.getByRole("radio", { name: "None" }).getAttribute("tabindex")).toBe("-1");
+    expect(screen.getByRole("radio", { name: "PNG" }).getAttribute("tabindex")).toBe("0");
+    expect(screen.getByRole("radio", { name: "Keep" }).getAttribute("tabindex")).toBe("-1");
+  });
+
+  it("selects and focuses the next option on ArrowRight", () => {
+    const onChange = vi.fn();
+    render(
+      <Controls settings={baseSettings({ resize: "none" })} onChange={onChange} onDownloadAll={() => {}} disabled={false} />,
+    );
+
+    const none = screen.getByRole("radio", { name: "None" });
+    none.focus();
+    fireEvent.keyDown(none, { key: "ArrowRight" });
+
+    expect(onChange).toHaveBeenCalledWith({ resize: 2048 });
+    expect(document.activeElement).toBe(screen.getByRole("radio", { name: "2048" }));
+  });
+
+  it("wraps from the first option to the last on ArrowLeft", () => {
+    const onChange = vi.fn();
+    render(
+      <Controls settings={baseSettings({ format: "keep" })} onChange={onChange} onDownloadAll={() => {}} disabled={false} />,
+    );
+
+    const keep = screen.getByRole("radio", { name: "Keep" });
+    keep.focus();
+    fireEvent.keyDown(keep, { key: "ArrowLeft" });
+
+    expect(onChange).toHaveBeenCalledWith({ format: "image/webp" });
+    expect(document.activeElement).toBe(screen.getByRole("radio", { name: "WebP" }));
+  });
+
+  it("jumps to the first and last option on Home and End", () => {
+    const onChange = vi.fn();
+    render(
+      <Controls settings={baseSettings({ resize: 2048 })} onChange={onChange} onDownloadAll={() => {}} disabled={false} />,
+    );
+
+    const selected = screen.getByRole("radio", { name: "2048" });
+    selected.focus();
+    fireEvent.keyDown(selected, { key: "End" });
+    expect(onChange).toHaveBeenLastCalledWith({ resize: 1280 });
+
+    fireEvent.keyDown(selected, { key: "Home" });
+    expect(onChange).toHaveBeenLastCalledWith({ resize: "none" });
+  });
+
+  it("leaves keys it does not own to the browser", () => {
+    const onChange = vi.fn();
+    render(
+      <Controls settings={baseSettings({ resize: "none" })} onChange={onChange} onDownloadAll={() => {}} disabled={false} />,
+    );
+
+    fireEvent.keyDown(screen.getByRole("radio", { name: "None" }), { key: "Tab" });
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
   it("calls onChange with a quality patch when the slider value changes via keyboard", () => {
     const onChange = vi.fn();
     const { container } = render(

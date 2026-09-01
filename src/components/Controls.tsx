@@ -1,3 +1,4 @@
+import { useRef, type KeyboardEvent } from "react";
 import { Field, FieldLabel, FieldContent } from "@/components/ui/field";
 import { ButtonGroup } from "@/components/ui/button-group";
 import { Slider } from "@/components/ui/slider";
@@ -33,6 +34,13 @@ function segmentButtonClass(selected: boolean) {
  * One labelled radiogroup of segmented buttons. Resize and Format are the
  * same control with different options; writing them twice meant two places
  * to keep the label wiring, the roles and the selected styling in step.
+ *
+ * Keyboard behaviour is the WAI-ARIA radiogroup pattern, not seven tab
+ * stops: the group is a single stop (roving tabindex — only the checked
+ * option is reachable with Tab) and the arrow keys move within it, wrapping
+ * at both ends, with Home/End for the extremes. Moving selects, which is
+ * what the pattern specifies and what this control can afford: every change
+ * is a debounced re-encode, not a destructive commit.
  */
 function SegmentedField<T>({
   id,
@@ -49,6 +57,46 @@ function SegmentedField<T>({
   onSelect: (value: T) => void;
   className?: string;
 }) {
+  const buttonsRef = useRef<(HTMLButtonElement | null)[]>([]);
+
+  // The checked option, or the first one when the value is somehow not in
+  // the list — a group with no tabbable member is a keyboard trap in
+  // reverse: Tab would skip the control entirely.
+  const checkedIndex = Math.max(
+    0,
+    options.findIndex((option) => option.value === value),
+  );
+
+  function move(to: number) {
+    const index = (to + options.length) % options.length;
+    onSelect(options[index].value);
+    buttonsRef.current[index]?.focus();
+  }
+
+  function onKeyDown(event: KeyboardEvent<HTMLButtonElement>, index: number) {
+    switch (event.key) {
+      case "ArrowRight":
+      case "ArrowDown":
+        move(index + 1);
+        break;
+      case "ArrowLeft":
+      case "ArrowUp":
+        move(index - 1);
+        break;
+      case "Home":
+        move(0);
+        break;
+      case "End":
+        move(options.length - 1);
+        break;
+      default:
+        return; // Tab, Space, Enter and everything else stay the browser's
+    }
+    // Only for the keys handled above: arrows would otherwise scroll the
+    // page and Home/End would jump it to top or bottom.
+    event.preventDefault();
+  }
+
   return (
     <Field className={className}>
       <FieldLabel id={`${id}-label`} className="label text-ink-60">
@@ -56,13 +104,18 @@ function SegmentedField<T>({
       </FieldLabel>
       <FieldContent>
         <ButtonGroup role="radiogroup" aria-labelledby={`${id}-label`} className="mt-2 gap-2">
-          {options.map((option) => (
+          {options.map((option, index) => (
             <button
               key={String(option.value)}
+              ref={(node) => {
+                buttonsRef.current[index] = node;
+              }}
               type="button"
               role="radio"
               aria-checked={value === option.value}
+              tabIndex={index === checkedIndex ? 0 : -1}
               onClick={() => onSelect(option.value)}
+              onKeyDown={(event) => onKeyDown(event, index)}
               className={segmentButtonClass(value === option.value)}
             >
               {option.label}
