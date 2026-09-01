@@ -1,7 +1,6 @@
 /// <reference lib="webworker" />
 import { env, AutoModel, AutoProcessor, RawImage } from "@huggingface/transformers";
-import { MODEL_BASE } from "./assets";
-import { DTYPE_FOR_DEVICE, pickDevice } from "./assets";
+import { DTYPE_FOR_DEVICE, localWasmPaths, MODEL_BASE, pickDevice } from "./assets";
 import { applyMaskAsAlpha, decontaminateEdges, normalizeMask } from "./refine";
 import type { MatteRequest } from "./types";
 
@@ -10,6 +9,16 @@ import type { MatteRequest } from "./types";
 env.allowRemoteModels = false;
 env.allowLocalModels = true;
 env.localModelPath = `${MODEL_BASE.replace(/\/briaai\/RMBG-1\.4$/, "")}/`;
+
+// ...and the same for the RUNTIME. The two settings above govern model
+// files only; transformers.js has already pointed the ONNX Runtime's WASM
+// binaries at jsDelivr by the time this module body runs. Re-point them at
+// this origin BEFORE any load, or the first cut-out fetches ~23 MB from a
+// third party. See ORT_WASM_BASE in ./assets.
+const onnxWasm = env.backends?.onnx?.wasm;
+if (onnxWasm) {
+  onnxWasm.wasmPaths = localWasmPaths(onnxWasm.wasmPaths) as typeof onnxWasm.wasmPaths;
+}
 
 const MODEL_ID = "briaai/RMBG-1.4";
 
