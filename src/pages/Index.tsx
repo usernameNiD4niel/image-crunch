@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { Masthead } from "@/components/Masthead";
 import { Statement } from "@/components/Statement";
 import { DropZone, getImageDimensions } from "@/components/DropZone";
@@ -8,6 +8,7 @@ import { Editorial } from "@/components/Editorial";
 import { Notices } from "@/components/Notices";
 import { useQueue } from "@/hooks/useQueue";
 import { trackUrl } from "@/lib/engine/client";
+import { pickDevice, isModelPresent } from "@/lib/engine/matte/assets";
 import type { QueueItem } from "@/lib/engine/types";
 
 const Index = () => {
@@ -25,6 +26,7 @@ const Index = () => {
     cutOut,
     restoreBackground,
   } = useQueue();
+  const [modelWarned, setModelWarned] = useState(false);
   const working = items.filter((i) => i.status === "working").length;
   const errors = items.filter((i) => i.status === "error").length;
 
@@ -75,6 +77,32 @@ const Index = () => {
     [dispatch],
   );
 
+  const onCutOut = useCallback(
+    async (item: QueueItem) => {
+      if (!modelWarned) {
+        setModelWarned(true);
+        const device = pickDevice();
+        if (!(await isModelPresent(device))) {
+          dispatch({
+            type: "notice",
+            message:
+              "Background removal is unavailable: the model was not deployed. Run `npm run fetch-model` and redeploy.",
+          });
+          return;
+        }
+        dispatch({
+          type: "notice",
+          message:
+            device === "webgpu"
+              ? "Downloading the background model — about 85 MB, once. It stays on your device."
+              : "This browser has no WebGPU, so background removal uses the slower fallback: about 43 MB to download, and a few seconds per image.",
+        });
+      }
+      cutOut(item);
+    },
+    [cutOut, dispatch, modelWarned],
+  );
+
   return (
     <>
       <Masthead
@@ -102,7 +130,7 @@ const Index = () => {
               totals={totals}
               onDownloadOne={downloadOne}
               onRemove={removeItem}
-              onCutOut={cutOut}
+              onCutOut={onCutOut}
               onRestore={restoreBackground}
               jpgRequested={settings.format === "image/jpeg"}
             />

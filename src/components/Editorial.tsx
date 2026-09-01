@@ -2,7 +2,7 @@ const ENTRIES = [
   {
     n: "01",
     title: "Nothing leaves your browser",
-    body: "Image Crunch has no server. Raster files are decoded, resized and re-encoded by your own device; SVG and icons pass through unchanged. The results never travel anywhere. Close the tab and nothing remains — there is no account, no history, and nothing stored.",
+    body: "Image Crunch has no server. Raster files are decoded, resized and re-encoded by your own device; SVG and icons pass through unchanged. The results never travel anywhere. Close the tab and nothing remains — there is no account, no history, and nothing stored. Removing a background runs a model that is downloaded once from this site and then cached; it runs on your device like everything else, and your images never leave it.",
   },
   {
     n: "02",
