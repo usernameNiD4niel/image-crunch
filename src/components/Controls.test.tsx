@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, screen, fireEvent, cleanup } from "@testing-library/react";
+import { act, render, screen, fireEvent, cleanup } from "@testing-library/react";
 import { Controls } from "./Controls";
 import type { EncodeSettings } from "@/lib/engine/types";
 
@@ -161,5 +161,73 @@ describe("Controls", () => {
     expect(button.disabled).toBe(false);
     fireEvent.click(button);
     expect(onDownloadAll).toHaveBeenCalledTimes(1);
+  });
+});
+
+// Clearing a 30-file queue is not undoable, so the button arms before it
+// fires: one click to ask, a second to mean it. No modal — the confirmation
+// is the button itself.
+describe("Controls reset", () => {
+  function renderControls(onReset = vi.fn()) {
+    render(
+      <Controls
+        settings={baseSettings()}
+        onChange={() => {}}
+        onDownloadAll={() => {}}
+        onReset={onReset}
+        disabled={false}
+      />,
+    );
+    return onReset;
+  }
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("does not clear the queue on the first click", () => {
+    const onReset = renderControls();
+    fireEvent.click(screen.getByRole("button", { name: /^Reset/ }));
+    expect(onReset).not.toHaveBeenCalled();
+  });
+
+  it("asks for confirmation on the armed button itself", () => {
+    renderControls();
+    fireEvent.click(screen.getByRole("button", { name: /^Reset/ }));
+    expect(screen.getByRole("button", { name: /Sure/i })).toBeTruthy();
+  });
+
+  it("clears the queue on the second click", () => {
+    const onReset = renderControls();
+    const button = screen.getByRole("button", { name: /^Reset/ });
+    fireEvent.click(button);
+    fireEvent.click(button);
+    expect(onReset).toHaveBeenCalledTimes(1);
+  });
+
+  it("disarms when the button loses focus", () => {
+    const onReset = renderControls();
+    const button = screen.getByRole("button", { name: /^Reset/ });
+    fireEvent.click(button);
+    fireEvent.blur(button);
+
+    expect(screen.getByRole("button", { name: /^Reset/ })).toBeTruthy();
+    fireEvent.click(button);
+    expect(onReset).not.toHaveBeenCalled();
+  });
+
+  it("disarms itself after a few seconds rather than staying hot", () => {
+    vi.useFakeTimers();
+    const onReset = renderControls();
+    const button = screen.getByRole("button", { name: /^Reset/ });
+    fireEvent.click(button);
+
+    act(() => {
+      vi.advanceTimersByTime(4000);
+    });
+
+    expect(screen.getByRole("button", { name: /^Reset/ })).toBeTruthy();
+    fireEvent.click(button);
+    expect(onReset).not.toHaveBeenCalled();
   });
 });

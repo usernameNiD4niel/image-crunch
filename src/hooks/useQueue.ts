@@ -61,6 +61,7 @@ export type QueueAction =
   | { type: "working"; id: string }
   | { type: "result"; id: string; result: EncodeResult }
   | { type: "error"; id: string; message: string }
+  | { type: "reset" }
   | { type: "settings"; settings: Partial<EncodeSettings> }
   | { type: "notice"; message: string }
   | { type: "dismiss-notice"; id: number }
@@ -77,6 +78,11 @@ export function queueReducer(state: QueueState, action: QueueAction): QueueState
         ? withNotice(added, `Queue holds ${MAX_QUEUE} files. ${rejected} not added.`)
         : added;
     }
+    case "reset":
+      // Files only. Settings are the user's preferences, not part of the
+      // batch being cleared; notices are, since every one of them reports on
+      // a drop whose files are going away.
+      return { ...state, items: [], notices: [] };
     case "remove":
       return { ...state, items: state.items.filter((i) => i.id !== action.id) };
     case "working":
@@ -252,12 +258,21 @@ export function useQueue() {
     save(await bundleZip(entries), "image-crunch.zip");
   }, [state.items]);
 
+  const reset = useCallback(() => {
+    // Bump first: a sweep may be in flight, and its results would otherwise
+    // land on ids the reducer has already dropped. The reducer ignores them
+    // either way, but the workers stop wasting cycles on a cleared queue.
+    clientRef.current?.bumpGeneration();
+    for (const item of itemsRef.current) releaseUrl(item.previewUrl);
+    dispatch({ type: "reset" });
+  }, []);
+
   const removeItem = useCallback((item: QueueItem) => {
     releaseUrl(item.previewUrl);
     dispatch({ type: "remove", id: item.id });
   }, []);
 
-  return { ...state, totals, pending, dispatch, downloadOne, downloadAll, removeItem };
+  return { ...state, totals, pending, dispatch, downloadOne, downloadAll, removeItem, reset };
 }
 
 function save(blob: Blob, filename: string) {

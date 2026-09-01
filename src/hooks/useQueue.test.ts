@@ -2,6 +2,7 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { act, renderHook, cleanup } from "@testing-library/react";
 import { queueReducer, initialQueueState, useQueue } from "./useQueue";
 import { currentResult } from "@/lib/engine/plan";
+import { releaseUrl } from "@/lib/engine/client";
 import type { QueueItem } from "@/lib/engine/types";
 
 function item(id: string, size = 1000): QueueItem {
@@ -269,6 +270,24 @@ describe("queueReducer notices", () => {
   });
 });
 
+describe("queueReducer reset", () => {
+  it("empties the queue", () => {
+    const added = queueReducer(initialQueueState, { type: "add", items: [item("a"), item("b")] });
+    expect(queueReducer(added, { type: "reset" }).items).toEqual([]);
+  });
+
+  it("clears standing notices, which only ever reported on the files being cleared", () => {
+    const noticed = queueReducer(initialQueueState, { type: "notice", message: "3 unsupported file(s) skipped." });
+    expect(queueReducer(noticed, { type: "reset" }).notices).toEqual([]);
+  });
+
+  it("keeps the settings — reset clears files, not preferences", () => {
+    const tuned = queueReducer(initialQueueState, { type: "settings", settings: { quality: 40, format: "image/png" } });
+    const state = queueReducer(tuned, { type: "reset" });
+    expect(state.settings).toEqual({ quality: 40, resize: "none", format: "image/png" });
+  });
+});
+
 describe("queueReducer settings changes", () => {
   const encoded = {
     blob: new Blob(),
@@ -416,6 +435,39 @@ describe("useQueue while a re-encode is in flight", () => {
     });
     expect(hook.result.current.items.every((i) => i.status === "queued")).toBe(true);
     expect(hook.result.current.pending).toBe(2);
+    hook.unmount();
+  });
+
+  it("revokes every preview URL it drops when the queue is reset", async () => {
+    const hook = await queueThenStall();
+    vi.mocked(releaseUrl).mockClear();
+
+    act(() => {
+      hook.result.current.reset();
+    });
+
+    expect(hook.result.current.items).toEqual([]);
+    expect(vi.mocked(releaseUrl).mock.calls.map(([url]) => url).sort()).toEqual(["blob:a", "blob:b"]);
+    hook.unmount();
+  });
+
+  // The sweep stalled by queueThenStall is still in flight when the reset
+  // lands. Its results must not resurrect rows the user just cleared.
+  it("stays empty when an in-flight encode lands after the reset", async () => {
+    const hook = await queueThenStall();
+    let settle: ((r: unknown) => void) | undefined;
+    encodeMock.mockImplementation(() => new Promise((resolve) => { settle = resolve; }));
+
+    act(() => {
+      hook.result.current.reset();
+    });
+    await act(async () => {
+      settle?.({ blob: new Blob(["x"]), size: 10, width: 1, height: 1, mime: "image/png", outcome: "encoded" });
+      await vi.advanceTimersByTimeAsync(500);
+    });
+
+    expect(hook.result.current.items).toEqual([]);
+    expect(hook.result.current.totals.count).toBe(0);
     hook.unmount();
   });
 

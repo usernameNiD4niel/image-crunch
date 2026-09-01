@@ -11,7 +11,7 @@ import { trackUrl } from "@/lib/engine/client";
 import type { QueueItem } from "@/lib/engine/types";
 
 const Index = () => {
-  const { items, settings, totals, notices, pending, dispatch, downloadOne, downloadAll, removeItem } = useQueue();
+  const { items, settings, totals, notices, pending, dispatch, downloadOne, downloadAll, removeItem, reset } = useQueue();
   const working = items.filter((i) => i.status === "working").length;
   const errors = items.filter((i) => i.status === "error").length;
 
@@ -89,6 +89,7 @@ const Index = () => {
               settings={settings}
               onChange={(patch) => dispatch({ type: "settings", settings: patch })}
               onDownloadAll={downloadAll}
+              onReset={reset}
               // Also disabled from the settings change onward, not just when
               // empty: every row still carries the PREVIOUS run's bytes
               // through the debounce gap and the sweep, so a zip taken then

@@ -1,4 +1,4 @@
-import { useRef, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { Field, FieldLabel, FieldContent } from "@/components/ui/field";
 import { ButtonGroup } from "@/components/ui/button-group";
 import { Slider } from "@/components/ui/slider";
@@ -8,6 +8,7 @@ interface ControlsProps {
   settings: EncodeSettings;
   onChange: (patch: Partial<EncodeSettings>) => void;
   onDownloadAll: () => void;
+  onReset: () => void;
   disabled: boolean;
 }
 
@@ -127,7 +128,53 @@ function SegmentedField<T>({
   );
 }
 
-export function Controls({ settings, onChange, onDownloadAll, disabled }: ControlsProps) {
+// How long an armed reset stays hot. Long enough to move the pointer and
+// read the word, short enough that a button left armed and forgotten is not
+// still waiting to wipe the queue when the user comes back.
+const ARM_TIMEOUT_MS = 4000;
+
+/**
+ * Clear-the-queue, in two clicks. Emptying a 30-file queue cannot be undone
+ * — the files are gone from the page and the object URLs are revoked — so
+ * the first click only arms the button and the second one means it. The
+ * confirmation is the button itself rather than a modal: it is one control's
+ * worth of consequence, and a dialog over the queue would hide the very
+ * thing being cleared. It disarms on blur and on a timeout, so a stray click
+ * cannot leave a live trigger sitting in the toolbar.
+ *
+ * Never --signal, armed or not: the signal colour is the download action's.
+ */
+function ResetButton({ onReset }: { onReset: () => void }) {
+  const [armed, setArmed] = useState(false);
+
+  useEffect(() => {
+    if (!armed) return;
+    const timer = window.setTimeout(() => setArmed(false), ARM_TIMEOUT_MS);
+    return () => window.clearTimeout(timer);
+  }, [armed]);
+
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        if (!armed) {
+          setArmed(true);
+          return;
+        }
+        setArmed(false);
+        onReset();
+      }}
+      onBlur={() => setArmed(false)}
+      className={`label border px-3 py-3 transition-colors duration-[140ms] ease-[var(--ease)] focus-visible:ring-0 ${
+        armed ? "border-ink bg-ink text-paper" : "border-ink text-ink hover:bg-ink hover:text-paper"
+      }`}
+    >
+      {armed ? "Sure?" : "Reset"}
+    </button>
+  );
+}
+
+export function Controls({ settings, onChange, onDownloadAll, onReset, disabled }: ControlsProps) {
   return (
     <div className="sticky bottom-0 z-40 border-t border-ink bg-paper py-4">
       <div className="grid grid-cols-1 gap-6 md:grid-cols-12 md:items-center">
@@ -179,7 +226,8 @@ export function Controls({ settings, onChange, onDownloadAll, disabled }: Contro
           className="md:col-span-3"
         />
 
-        <div className="md:col-span-2 md:justify-self-end">
+        <div className="flex items-center gap-3 md:col-span-2 md:justify-self-end">
+          <ResetButton onReset={onReset} />
           <button
             type="button"
             onClick={onDownloadAll}
