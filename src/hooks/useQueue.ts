@@ -203,7 +203,14 @@ export function useQueue() {
     debounceRef.current = window.setTimeout(runAll, 200);
     return () => window.clearTimeout(debounceRef.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [itemIdsKey, state.settings.quality, state.settings.resize, state.settings.format, runAll]);
+  }, [
+    itemIdsKey,
+    state.settings.quality,
+    state.settings.resize,
+    state.settings.format,
+    state.settings.icon,
+    runAll,
+  ]);
 
   const totals = useMemo(() => {
     // currentResult, not i.result: a row that is mid-re-encode still holds

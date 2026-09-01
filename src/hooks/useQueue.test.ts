@@ -438,6 +438,43 @@ describe("useQueue while a re-encode is in flight", () => {
     hook.unmount();
   });
 
+  // Icon size is a setting like any other: it changes the bytes that come
+  // out, so it must trigger the debounced sweep. Leaving it out of the
+  // effect's key would leave every row showing the previous size's figures.
+  it("re-encodes when the icon size changes", async () => {
+    vi.useFakeTimers();
+    encodeMock.mockImplementation(async () => ({
+      blob: new Blob(["x"]),
+      size: 10,
+      width: 1,
+      height: 1,
+      mime: "image/x-icon",
+      outcome: "encoded" as const,
+    }));
+    const hook = renderHook(() => useQueue());
+    act(() => {
+      hook.result.current.dispatch({ type: "add", items: [item("a")] });
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(300);
+    });
+    expect(encodeMock).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      hook.result.current.dispatch({ type: "settings", settings: { icon: 128 } });
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(300);
+    });
+
+    expect(encodeMock).toHaveBeenCalledTimes(2);
+    // The mock is declared with no parameters, so reach the settings
+    // argument through the untyped call record.
+    const settingsArg = (encodeMock.mock.calls[1] as unknown[])[3];
+    expect(settingsArg).toMatchObject({ icon: 128 });
+    hook.unmount();
+  });
+
   it("revokes every preview URL it drops when the queue is reset", async () => {
     const hook = await queueThenStall();
     vi.mocked(releaseUrl).mockClear();

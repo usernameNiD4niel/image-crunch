@@ -2,7 +2,8 @@ import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { Field, FieldLabel, FieldContent } from "@/components/ui/field";
 import { ButtonGroup } from "@/components/ui/button-group";
 import { Slider } from "@/components/ui/slider";
-import type { EncodeSettings, OutputFormat, ResizePreset } from "@/lib/engine/types";
+import type { EncodeSettings, IconSize, OutputFormat, ResizePreset } from "@/lib/engine/types";
+import { ICON_SIZES } from "@/lib/engine/plan";
 
 interface ControlsProps {
   settings: EncodeSettings;
@@ -17,7 +18,13 @@ const FORMATS: { value: OutputFormat; label: string }[] = [
   { value: "image/jpeg", label: "JPG" },
   { value: "image/png", label: "PNG" },
   { value: "image/webp", label: "WebP" },
+  { value: "image/x-icon", label: "ICO" },
 ];
+
+const ICONS: { value: IconSize; label: string }[] = ICON_SIZES.map((size) => ({
+  value: size,
+  label: String(size),
+}));
 
 const RESIZES: { value: ResizePreset; label: string }[] = [
   { value: "none", label: "None" },
@@ -26,7 +33,7 @@ const RESIZES: { value: ResizePreset; label: string }[] = [
 ];
 
 function segmentButtonClass(selected: boolean) {
-  return `data border px-3 py-1 text-[0.8125rem] transition-colors duration-[140ms] ease-[var(--ease)] focus-visible:ring-0 ${
+  return `data border px-3 py-1 text-[0.8125rem] transition-colors duration-[140ms] ease-[var(--ease)] focus-visible:ring-0 disabled:opacity-[0.38] ${
     selected ? "border-ink bg-ink text-paper" : "border-rule text-ink-72"
   }`;
 }
@@ -50,6 +57,7 @@ function SegmentedField<T>({
   value,
   onSelect,
   className,
+  disabled = false,
 }: {
   id: string;
   label: string;
@@ -57,6 +65,8 @@ function SegmentedField<T>({
   value: T;
   onSelect: (value: T) => void;
   className?: string;
+  /** Renders the whole group inert — for a setting the current format ignores. */
+  disabled?: boolean;
 }) {
   const buttonsRef = useRef<(HTMLButtonElement | null)[]>([]);
 
@@ -75,6 +85,7 @@ function SegmentedField<T>({
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLButtonElement>, index: number) {
+    if (disabled) return;
     switch (event.key) {
       case "ArrowRight":
       case "ArrowDown":
@@ -100,11 +111,11 @@ function SegmentedField<T>({
 
   return (
     <Field className={className}>
-      <FieldLabel id={`${id}-label`} className="label text-ink-72">
+      <FieldLabel id={`${id}-label`} className={`label ${disabled ? "text-ink-58" : "text-ink-72"}`}>
         {label}
       </FieldLabel>
       <FieldContent>
-        <ButtonGroup role="radiogroup" aria-labelledby={`${id}-label`} className="mt-2 gap-2">
+        <ButtonGroup role="radiogroup" aria-labelledby={`${id}-label`} className="mt-2 flex-wrap gap-2">
           {options.map((option, index) => (
             <button
               key={String(option.value)}
@@ -115,6 +126,7 @@ function SegmentedField<T>({
               role="radio"
               aria-checked={value === option.value}
               tabIndex={index === checkedIndex ? 0 : -1}
+              disabled={disabled}
               onClick={() => onSelect(option.value)}
               onKeyDown={(event) => onKeyDown(event, index)}
               className={segmentButtonClass(value === option.value)}
@@ -175,12 +187,20 @@ function ResetButton({ onReset }: { onReset: () => void }) {
 }
 
 export function Controls({ settings, onChange, onDownloadAll, onReset, disabled }: ControlsProps) {
+  // An .ico carries lossless PNGs at fixed square sizes: the quality slider
+  // has nothing to act on and the resize presets are overridden by the icon
+  // bundle. Both stay on screen — the settings still exist, and the user is
+  // one click from a format that uses them — but inert, because a control
+  // that moves without changing the output is worse than one that is plainly
+  // not in play.
+  const ico = settings.format === "image/x-icon";
+
   return (
     <div className="sticky bottom-0 z-40 border-t border-ink bg-paper py-4">
       <div className="grid grid-cols-1 gap-6 md:grid-cols-12 md:items-center">
-        <Field className="md:col-span-4">
+        <Field className={ico ? "md:col-span-2 opacity-[0.38]" : "md:col-span-4"}>
           <FieldLabel className="label text-ink-72">
-            Quality <span className="data text-ink">{settings.quality}</span>
+            Quality <span className="data text-ink">{ico ? "—" : settings.quality}</span>
           </FieldLabel>
           <FieldContent>
             <Slider
@@ -194,6 +214,7 @@ export function Controls({ settings, onChange, onDownloadAll, onReset, disabled 
               max={100}
               step={5}
               value={settings.quality}
+              disabled={ico}
               onValueChange={(value) => {
                 // Base UI's Slider.onValueChange signature is
                 // (value: number | readonly number[], eventDetails) => void —
@@ -208,14 +229,30 @@ export function Controls({ settings, onChange, onDownloadAll, onReset, disabled 
           </FieldContent>
         </Field>
 
+        {/* Resize stays on screen under ICO but inert: the preset is still
+            the user's, and it comes back the moment they leave ICO — it is
+            simply not what decides an icon's size. Icon appears beside it,
+            taking the width Quality and Resize give up. */}
         <SegmentedField
           id="resize"
           label="Resize"
           options={RESIZES}
           value={settings.resize}
           onSelect={(resize) => onChange({ resize })}
-          className="md:col-span-3"
+          disabled={ico}
+          className={ico ? "md:col-span-2" : "md:col-span-3"}
         />
+
+        {ico && (
+          <SegmentedField
+            id="icon"
+            label="Icon"
+            options={ICONS}
+            value={settings.icon}
+            onSelect={(icon) => onChange({ icon })}
+            className="md:col-span-3"
+          />
+        )}
 
         <SegmentedField
           id="format"

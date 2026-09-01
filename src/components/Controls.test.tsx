@@ -90,8 +90,9 @@ describe("Controls", () => {
     keep.focus();
     fireEvent.keyDown(keep, { key: "ArrowLeft" });
 
-    expect(onChange).toHaveBeenCalledWith({ format: "image/webp" });
-    expect(document.activeElement).toBe(screen.getByRole("radio", { name: "WebP" }));
+    // ICO is last in the group now, so wrapping backwards from Keep lands there.
+    expect(onChange).toHaveBeenCalledWith({ format: "image/x-icon" });
+    expect(document.activeElement).toBe(screen.getByRole("radio", { name: "ICO" }));
   });
 
   it("jumps to the first and last option on Home and End", () => {
@@ -231,5 +232,87 @@ describe("Controls reset", () => {
     expect(screen.getByRole("button", { name: /^Reset/ })).toBeTruthy();
     fireEvent.click(button);
     expect(onReset).not.toHaveBeenCalled();
+  });
+});
+
+// ICO is not a lossy raster format: it carries lossless PNGs at fixed square
+// sizes, so what makes an icon small is the size, not the quality. The panel
+// has to say that — an enabled Quality slider that changes nothing would be
+// a lie the user can drag.
+describe("Controls with ICO selected", () => {
+  function renderControls(settings = baseSettings({ format: "image/x-icon" }), onChange = vi.fn()) {
+    render(
+      <Controls
+        settings={settings}
+        onChange={onChange}
+        onDownloadAll={() => {}}
+        onReset={() => {}}
+        disabled={false}
+      />,
+    );
+    return onChange;
+  }
+
+  it("offers ICO as a format", () => {
+    const onChange = renderControls(baseSettings());
+    fireEvent.click(screen.getByRole("radio", { name: "ICO" }));
+    expect(onChange).toHaveBeenCalledWith({ format: "image/x-icon" });
+  });
+
+  it("reveals the icon sizes only when ICO is the format", () => {
+    renderControls(baseSettings({ format: "image/webp" }));
+    expect(screen.queryByRole("radio", { name: "64" })).toBeNull();
+
+    cleanup();
+    renderControls();
+    expect(screen.getByRole("radio", { name: "64" })).toBeTruthy();
+    expect(screen.getByRole("radio", { name: "16" })).toBeTruthy();
+    expect(screen.getByRole("radio", { name: "256" })).toBeTruthy();
+  });
+
+  it("marks the current icon size and reports a change", () => {
+    const onChange = renderControls(baseSettings({ format: "image/x-icon", icon: 128 }));
+
+    expect(screen.getByRole("radio", { name: "128" }).getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(screen.getByRole("radio", { name: "32" }));
+    expect(onChange).toHaveBeenCalledWith({ icon: 32 });
+  });
+
+  it("disables the quality slider, which an .ico does not use", () => {
+    const { container } = render(
+      <Controls
+        settings={baseSettings({ format: "image/x-icon" })}
+        onChange={() => {}}
+        onDownloadAll={() => {}}
+        onReset={() => {}}
+        disabled={false}
+      />,
+    );
+
+    const slider = container.querySelector('input[type="range"]') as HTMLInputElement;
+    expect(slider.disabled).toBe(true);
+  });
+
+  it("disables the resize presets, since an icon's size comes from the bundle", () => {
+    renderControls();
+
+    for (const label of ["None", "2048", "1280"]) {
+      expect((screen.getByRole("radio", { name: label }) as HTMLButtonElement).disabled).toBe(true);
+    }
+  });
+
+  it("leaves quality and resize live for every other format", () => {
+    const { container } = render(
+      <Controls
+        settings={baseSettings({ format: "image/jpeg" })}
+        onChange={() => {}}
+        onDownloadAll={() => {}}
+        onReset={() => {}}
+        disabled={false}
+      />,
+    );
+
+    expect((container.querySelector('input[type="range"]') as HTMLInputElement).disabled).toBe(false);
+    expect((screen.getByRole("radio", { name: "None" }) as HTMLButtonElement).disabled).toBe(false);
   });
 });
