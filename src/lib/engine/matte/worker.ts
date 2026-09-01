@@ -25,9 +25,24 @@ const MODEL_ID = "briaai/RMBG-1.4";
 let model: Awaited<ReturnType<typeof AutoModel.from_pretrained>> | null = null;
 let processor: Awaited<ReturnType<typeof AutoProcessor.from_pretrained>> | null = null;
 let currentGeneration = 0;
+// The in-flight load, memoized. Without it, two ✂ presses in quick
+// succession both see `model === null` — the button is disabled per ROW,
+// so nothing stops row A and row B being pressed back to back — and both
+// call from_pretrained, downloading and holding a second 88 MB model.
+let loading: Promise<void> | null = null;
 
-async function ensureLoaded() {
-  if (model && processor) return;
+function ensureLoaded(): Promise<void> {
+  if (model && processor) return Promise.resolve();
+  // A failed load clears the memo, so the next request retries rather than
+  // inheriting the first attempt's rejection forever.
+  loading ??= load().catch((error) => {
+    loading = null;
+    throw error;
+  });
+  return loading;
+}
+
+async function load() {
   const device = pickDevice();
   model = await AutoModel.from_pretrained(MODEL_ID, {
     // This model's config announces SegformerForSemanticSegmentation, which
@@ -50,10 +65,23 @@ async function ensureLoaded() {
   } as never);
 }
 
-self.onmessage = async (event: MessageEvent<MatteRequest>) => {
-  const { id, generation, seq, file } = event.data;
-  currentGeneration = Math.max(currentGeneration, generation);
+// The tail of the work queue. One inference at a time: `model` and
+// `processor` are module-level singletons, and two overlapping calls would
+// compete for the same GPU/WASM session for no gain in throughput.
+// MatteClient's seq token already makes out-of-order replies safe, so
+// serializing here costs nothing but the wait.
+let queue: Promise<void> = Promise.resolve();
 
+self.onmessage = (event: MessageEvent<MatteRequest>) => {
+  const request = event.data;
+  // Recorded on ARRIVAL, not when this request's turn comes: a newer
+  // request queued behind an older one must supersede it immediately, so
+  // the older one's result is dropped rather than delivered.
+  currentGeneration = Math.max(currentGeneration, request.generation);
+  queue = queue.then(() => handle(request));
+};
+
+async function handle({ id, generation, seq, file }: MatteRequest) {
   try {
     await ensureLoaded();
 
@@ -105,4 +133,4 @@ self.onmessage = async (event: MessageEvent<MatteRequest>) => {
       message: error instanceof Error ? error.message : "Background removal failed",
     });
   }
-};
+}
