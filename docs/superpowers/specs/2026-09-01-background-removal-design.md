@@ -18,7 +18,7 @@ used personally, no account, no server, no cost to run.
 | Question | Decision |
 |---|---|
 | Shape | Per-row action, not a queue-wide setting. The model loads on first use, so anyone who never cuts out an image never pays for it. |
-| Model | RMBG-1.4, quantized ONNX. |
+| Model | RMBG-1.4. fp16 weights where WebGPU exists, q8 as the fallback — see the measurements below. |
 | Weights | Self-hosted from this app's own origin. No third-party fetch at runtime. |
 | Output | The cut-out replaces the row's source; format is forced to something alpha-capable. |
 | Inference site | A dedicated matte worker, separate from the encode pool. |
@@ -26,15 +26,50 @@ used personally, no account, no server, no cost to run.
 
 ## Verified facts
 
-- **Model size.** `model_quantized.onnx` is **44.4 MB** (`model_fp16.onnx`
-  88.2 MB, `model.onnx` 176 MB). The quantized build is what ships.
+- **Model size.** `model_quantized.onnx` is **44.4 MB**, `model_fp16.onnx`
+  **88.2 MB**, `model.onnx` 176 MB.
 - **Native input.** 1024×1024.
 - **Licence.** `bria-rmbg-1.4` — free for non-commercial use under a
   Creative Commons licence; "Commercial use is subject to a commercial
   agreement with BRIA." Ship the licence text next to the weights.
 - **Hosting.** Cloudflare Pages does not meter bandwidth on static assets at
-  any tier. GitHub Pages has a 100 GB/month soft bandwidth limit and a 1 GB
-  site limit — at 44.4 MB, roughly 2,250 first-time visitors a month.
+  any tier, which is why it is the recommended host. GitHub Pages has a
+  100 GB/month soft bandwidth limit and a 1 GB site limit — at 85 MB per
+  WebGPU visitor that is roughly 1,175 first-time visitors a month, and the
+  two builds together occupy 13% of the site limit.
+
+### Measured, not estimated
+
+A throwaway spike (branch `spike/background-removal`) ran the real model in
+a worker under this Vite setup, on a 1280×1709 photograph:
+
+| Configuration | Download | Warm inference |
+|---|---|---|
+| WebGPU + fp16 | 85 MB | **0.57 s** |
+| WebGPU + q8 | 43 MB | 5.9–7.9 s |
+| WASM + q8 | 43 MB | 5.4 s |
+
+Preprocessing costs 0.1–0.3 s and composition 0.1–0.25 s; both scale with
+the source's size, while inference does not — the model always sees 1024².
+
+Three findings that change the design:
+
+1. **q8 is ~10× slower than fp16 on WebGPU, and no faster than WASM.** int8
+   is not accelerated there, so the smaller file buys nothing but a wait.
+   fp16 is what ships wherever WebGPU exists.
+2. **q8 caps the mask at 254, not 255.** Fully opaque pixels come out
+   fractionally transparent. The compose step must rescale the mask so its
+   maximum is a true 255 — needed only on the fallback path, but cheap and
+   unconditional.
+3. **`dtype: "fp16"` did not resolve to the fp16 filename** with the bare
+   config from the model repo: the loader asked for `model.onnx`, the dev
+   server answered with `index.html`, and ONNX failed on protobuf parsing.
+   The fetch script sidesteps this by saving each build under the name the
+   loader actually requests, and the missing-model check must treat an HTML
+   response as missing rather than trusting the status code.
+
+Quality was verified by sampling: interior RGB in the cut-out is
+byte-identical to the source, and only alpha differs.
 
 Sources are listed at the end.
 
@@ -52,7 +87,8 @@ encode subsystem so there is one mental model for both:
   `matte(id, file, source)`, `bumpGeneration()`, `dispose()`.
 - **`worker.ts`.** Loads `transformers.js` with `env.allowRemoteModels =
   false` and `env.localModelPath = "/models/"`, so the only fetch is from
-  this origin. Prefers the WebGPU backend, falls back to WASM. It also runs
+  this origin. Detects WebGPU and loads the fp16 build; without it, loads
+  the q8 build on WASM and accepts the slower path. It also runs
   the refinement and returns the finished cut-out blob, because the pixel
   work below is full-resolution — twelve million pixels for a 4000×3000
   source — and doing it on the main thread would jank the UI the way
@@ -78,6 +114,9 @@ the same compression the app already does.
 
 Edge treatment is the difference between a demo and something usable:
 
+- **Mask normalisation.** Rescale the mask so its maximum is 255. The q8
+  build tops out at 254, which would leave every "opaque" pixel very
+  slightly transparent.
 - **Feather.** One pixel of alpha falloff so the cut edge is not a staircase.
 - **Decontamination.** Pixels on the boundary are a blend of subject and old
   background. Left alone they show as a dark or coloured halo once composited
@@ -135,7 +174,7 @@ for cut ones, since a cut row never resolves to JPEG.
   offers `Restore background from <name>`.
 - **Compare panel.** The compressed pane gets a checkerboard behind it, so
   transparency reads as transparency instead of as white.
-- **First run.** A notice: the model is downloading, once, ~44 MB, and
+- **First run.** A notice: the model is downloading, once, ~85 MB, and
   everything stays on the device. A second notice if the weights are missing
   from the deployment, naming the fetch script rather than failing silently.
 - **Capability.** Devices that can run neither WebGPU nor WASM threads get
@@ -143,9 +182,12 @@ for cut ones, since a cut row never resolves to JPEG.
 
 ## Assets and build
 
-- `scripts/fetch-model.mjs` downloads the quantized weights and config into
-  `public/models/rmbg-1.4/`, which is **gitignored**. Committing 44 MB of
-  binaries would sit in the repository's history permanently.
+- `scripts/fetch-model.mjs` downloads BOTH builds — fp16 and q8 — plus the
+  configs into `public/models/briaai/RMBG-1.4/`, which is **gitignored**.
+  Committing 128 MB of binaries would sit in the repository's history
+  permanently. Each visitor downloads exactly one of the two.
+- The script saves each build under the filename the loader requests, per
+  finding 3 above.
 - The script runs on install/deploy; the build fails loudly if the weights
   are absent, so a deployment can never silently ship a broken button.
 - `public/models/rmbg-1.4/LICENSE.txt` ships beside the weights.
@@ -158,8 +200,9 @@ Unit, in this order:
 
 1. `resolveOutputFormat` with `needsAlpha` — JPG becomes WebP, everything
    else is untouched.
-2. `refine` as a pure function over pixel data: mask upscaling, the feather,
-   decontamination, and that RGB is unmodified away from the edge.
+2. `refine` as a pure function over pixel data: mask normalisation to a true
+   255 maximum, mask upscaling, the feather, decontamination, and that RGB is
+   unmodified away from the edge.
 3. The four new reducer actions, including that `matte-clear` restores the
    original source.
 4. `MatteClient` staleness against a mocked worker, mirroring
@@ -173,13 +216,14 @@ and peak memory on a large source.
 
 ## Risks
 
-- **44 MB first-run download.** Mitigated by being per-row and lazy, and by
-  the browser cache. Cloudflare Pages removes the bandwidth question.
+- **85 MB first-run download** (43 MB on the fallback path). Mitigated by
+  being per-row and lazy, and by the browser cache. Cloudflare Pages removes
+  the bandwidth question.
 - **Memory.** Model plus a large decoded image is hundreds of megabytes. Cap
   matte requests by source megapixels and say so plainly above the cap
   rather than crashing the tab.
-- **Speed.** One to three seconds per image on a laptop, worse on phones.
-  The per-row shape means the user chooses when to pay it.
+- **Speed.** 0.6 s per image on WebGPU, around 5 s on the WASM fallback,
+  worse on phones. The per-row shape means the user chooses when to pay it.
 - **Licence.** Non-commercial only. The model sits behind one `MatteClient`
   interface, so swapping to U²-Net (Apache-2.0) later is a contained change.
 - **Safari.** WASM threading support is the weakest here; the capability
