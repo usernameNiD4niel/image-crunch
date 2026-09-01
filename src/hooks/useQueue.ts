@@ -82,8 +82,27 @@ export function queueReducer(state: QueueState, action: QueueAction): QueueState
             : i,
         ),
       };
-    case "settings":
-      return { ...state, settings: { ...state.settings, ...action.settings } };
+    case "settings": {
+      // A no-op dispatch (the slider re-reporting the value it already has)
+      // must not requeue a settled queue — it would strip every row's figures
+      // and start a sweep for settings nobody changed.
+      const keys = Object.keys(action.settings) as (keyof EncodeSettings)[];
+      if (keys.every((k) => state.settings[k] === action.settings[k])) return state;
+
+      // Superseding happens HERE, on the change itself — not 200ms later when
+      // the debounced sweep sets "working". In that window the figures on the
+      // rows, the totals and the zip all still described the settings the user
+      // had just moved off, and a download taken then handed out those bytes.
+      // The stored blobs stay on the items (the compare panel reads them
+      // directly); it is `currentResult` that stops treating them as current.
+      return {
+        ...state,
+        settings: { ...state.settings, ...action.settings },
+        items: state.items.map((i) =>
+          i.status === "queued" ? i : { ...i, status: "queued", error: undefined },
+        ),
+      };
+    }
     case "notice":
       return { ...state, notice: action.message };
     default:
@@ -165,6 +184,15 @@ export function useQueue() {
     return { count: done.length, input, output, percent: savingsPercent(input, output) };
   }, [state.items]);
 
+  // Rows the app owes work on: superseded and waiting for the debounced
+  // sweep ("queued"), or being encoded right now ("working"). The UI needs
+  // the whole window, not just the in-flight part — between the settings
+  // change and the sweep there is no honest aggregate to show either.
+  const pending = useMemo(
+    () => state.items.filter((i) => i.status === "queued" || i.status === "working").length,
+    [state.items],
+  );
+
   const downloadOne = useCallback((item: QueueItem) => {
     const result = currentResult(item);
     if (!result) return;
@@ -178,7 +206,10 @@ export function useQueue() {
     // filename scheme, with nothing on screen saying so. Refuse outright
     // while any row is working; the UI disables the button too, but the
     // guard is here so no caller can route around it.
-    if (state.items.some((i) => i.status === "working")) return;
+    // "queued" counts as mid-sweep too: from the moment settings change every
+    // row is superseded and waiting for the debounced re-encode, even though
+    // no work has started yet.
+    if (state.items.some((i) => i.status === "working" || i.status === "queued")) return;
 
     const taken = new Set<string>();
     const entries = state.items
@@ -198,7 +229,7 @@ export function useQueue() {
     dispatch({ type: "remove", id: item.id });
   }, []);
 
-  return { ...state, totals, dispatch, downloadOne, downloadAll, removeItem };
+  return { ...state, totals, pending, dispatch, downloadOne, downloadAll, removeItem };
 }
 
 function save(blob: Blob, filename: string) {

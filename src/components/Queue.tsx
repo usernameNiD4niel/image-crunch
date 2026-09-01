@@ -5,13 +5,14 @@ import { QueueRow } from "@/components/QueueRow";
 
 interface QueueProps {
   items: QueueItem[];
-  working: number;
+  /** Rows superseded and awaiting the debounced sweep, plus rows encoding now. */
+  pending: number;
   totals: { count: number; input: number; output: number; percent: number };
   onDownloadOne: (item: QueueItem) => void;
   onRemove: (item: QueueItem) => void;
 }
 
-export function Queue({ items, working, totals, onDownloadOne, onRemove }: QueueProps) {
+export function Queue({ items, pending, totals, onDownloadOne, onRemove }: QueueProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   return (
@@ -43,12 +44,14 @@ export function Queue({ items, working, totals, onDownloadOne, onRemove }: Queue
           would be a screen-reader firehose during a sweep. */}
       <div className="data flex items-baseline justify-between pt-4 text-[0.8125rem]" aria-live="polite">
         <span className="label">Total</span>
-        {/* While a sweep is running the per-row results are superseded, so
-            there is no honest aggregate to state — and stating the previous
-            one here would have this live region read out figures for
-            settings the user has already moved off. Say what is true. */}
-        {working > 0 ? (
-          <span className="text-ink-60">encoding {working} file(s)…</span>
+        {/* From the moment a setting changes — not from when the sweep 200ms
+            later actually starts — the per-row results are superseded, so
+            there is no honest aggregate to state. Stating the previous one
+            would have this live region read out figures for settings the user
+            has already moved off; stating the empty one would read out a
+            0 B → 0 B that was never true. Say what is happening instead. */}
+        {pending > 0 ? (
+          <span className="text-ink-60">re-encoding {pending} file(s)…</span>
         ) : (
           <span>
             {formatBytes(totals.input)} → {formatBytes(totals.output)}{" "}

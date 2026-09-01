@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { act, renderHook, cleanup } from "@testing-library/react";
 import { queueReducer, initialQueueState, useQueue } from "./useQueue";
+import { currentResult } from "@/lib/engine/plan";
 import type { QueueItem } from "@/lib/engine/types";
 
 function item(id: string, size = 1000): QueueItem {
@@ -215,6 +216,40 @@ describe("useQueue re-encode scheduling", () => {
 // row goes to "working" while still holding the previous run's blob. These
 // pin that none of that reaches the user as a current figure or a download.
 
+describe("queueReducer settings changes", () => {
+  const encoded = {
+    blob: new Blob(),
+    size: 250,
+    width: 100,
+    height: 100,
+    mime: "image/png",
+    outcome: "encoded" as const,
+  };
+
+  function settled() {
+    const added = queueReducer(initialQueueState, { type: "add", items: [item("a")] });
+    return queueReducer(added, { type: "result", id: "a", result: encoded });
+  }
+
+  it("returns settled rows to queued when a setting actually changes", () => {
+    const state = queueReducer(settled(), { type: "settings", settings: { quality: 40 } });
+    expect(state.items[0].status).toBe("queued");
+    expect(currentResult(state.items[0])).toBeUndefined();
+  });
+
+  it("keeps the previous bytes on the item so the compare panel does not tear down", () => {
+    const state = queueReducer(settled(), { type: "settings", settings: { quality: 40 } });
+    expect(state.items[0].result).toEqual(encoded);
+  });
+
+  it("leaves rows alone when the dispatched settings match the current ones", () => {
+    const before = settled();
+    const state = queueReducer(before, { type: "settings", settings: { quality: before.settings.quality } });
+    expect(state.items[0].status).toBe("done");
+    expect(state.items).toBe(before.items);
+  });
+});
+
 describe("useQueue while a re-encode is in flight", () => {
   afterEach(() => {
     vi.useRealTimers();
@@ -261,6 +296,75 @@ describe("useQueue while a re-encode is in flight", () => {
     expect(hook.result.current.items.every((i) => i.result !== undefined)).toBe(true);
     return hook;
   }
+
+  // The 200ms debounce used to leave a window where the settings on screen
+  // had already changed but every row still read "done" and still handed out
+  // the PREVIOUS run's bytes. Superseding is now the settings change itself,
+  // not the sweep that follows it.
+  it("supersedes settled results the instant settings change, before the sweep starts", async () => {
+    vi.useFakeTimers();
+    encodeMock.mockImplementation(async () => ({
+      blob: new Blob(["x"]),
+      size: 10,
+      width: 1,
+      height: 1,
+      mime: "image/png",
+      outcome: "encoded" as const,
+    }));
+    const hook = renderHook(() => useQueue());
+    act(() => {
+      hook.result.current.dispatch({ type: "add", items: [item("a")] });
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(300);
+    });
+    expect(hook.result.current.totals.count).toBe(1);
+
+    // No timer advance: the debounced sweep has NOT run yet.
+    act(() => {
+      hook.result.current.dispatch({ type: "settings", settings: { quality: 40 } });
+    });
+
+    expect(hook.result.current.totals.count).toBe(0);
+
+    const createUrl = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:download");
+    act(() => {
+      hook.result.current.downloadOne(hook.result.current.items[0]);
+    });
+    expect(createUrl).not.toHaveBeenCalled();
+    createUrl.mockRestore();
+    hook.unmount();
+  });
+
+  // The queue's aria-live total and the masthead both need to distinguish
+  // "there is no aggregate yet" from "the aggregate is zero". `pending`
+  // covers the whole superseded window: the debounce gap AND the sweep.
+  it("counts rows awaiting a re-encode as pending before the sweep starts", async () => {
+    vi.useFakeTimers();
+    encodeMock.mockImplementation(async () => ({
+      blob: new Blob(["x"]),
+      size: 10,
+      width: 1,
+      height: 1,
+      mime: "image/png",
+      outcome: "encoded" as const,
+    }));
+    const hook = renderHook(() => useQueue());
+    act(() => {
+      hook.result.current.dispatch({ type: "add", items: [item("a"), item("b")] });
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(300);
+    });
+    expect(hook.result.current.pending).toBe(0);
+
+    act(() => {
+      hook.result.current.dispatch({ type: "settings", settings: { quality: 40 } });
+    });
+    expect(hook.result.current.items.every((i) => i.status === "queued")).toBe(true);
+    expect(hook.result.current.pending).toBe(2);
+    hook.unmount();
+  });
 
   it("excludes rows that are re-encoding from the totals", async () => {
     const hook = await queueThenStall();

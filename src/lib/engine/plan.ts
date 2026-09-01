@@ -114,6 +114,13 @@ export function formatBytes(bytes: number): string {
  * user as a download.
  */
 export function currentResult(item: QueueItem): EncodeResult | undefined {
-  if (item.status === "working" || item.status === "error") return undefined;
+  // A whitelist, not a blacklist: only the three settled statuses describe a
+  // result the app is currently offering. "queued" is on this list's wrong
+  // side deliberately — a settings change returns every row to it, so the
+  // superseded bytes stop counting the instant the setting moves rather than
+  // when the debounced sweep finally starts.
+  if (item.status !== "done" && item.status !== "passthrough" && item.status !== "kept") {
+    return undefined;
+  }
   return item.result;
 }

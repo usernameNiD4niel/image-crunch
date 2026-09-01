@@ -10,7 +10,7 @@ import { trackUrl } from "@/lib/engine/client";
 import type { QueueItem } from "@/lib/engine/types";
 
 const Index = () => {
-  const { items, settings, totals, notice, dispatch, downloadOne, downloadAll, removeItem } = useQueue();
+  const { items, settings, totals, notice, pending, dispatch, downloadOne, downloadAll, removeItem } = useQueue();
   const working = items.filter((i) => i.status === "working").length;
   const errors = items.filter((i) => i.status === "error").length;
 
@@ -92,17 +92,18 @@ const Index = () => {
           <DropZone onFiles={onFiles} />
         ) : (
           <>
-            <Queue items={items} working={working} totals={totals} onDownloadOne={downloadOne} onRemove={removeItem} />
+            <Queue items={items} pending={pending} totals={totals} onDownloadOne={downloadOne} onRemove={removeItem} />
             <DropZone onFiles={onFiles} compact />
             <Controls
               settings={settings}
               onChange={(patch) => dispatch({ type: "settings", settings: patch })}
               onDownloadAll={downloadAll}
-              // Also disabled mid-sweep, not just when empty: every row
-              // still carries the PREVIOUS run's bytes during the debounced
-              // re-encode, so a zip taken now would not match the settings
-              // on screen. Masthead's ↓ ALL already hides while working.
-              disabled={totals.count === 0 || working > 0}
+              // Also disabled from the settings change onward, not just when
+              // empty: every row still carries the PREVIOUS run's bytes
+              // through the debounce gap and the sweep, so a zip taken then
+              // would not match the settings on screen. Masthead's ↓ ALL
+              // already hides while the totals have no rows to report.
+              disabled={totals.count === 0 || pending > 0}
             />
           </>
         )}
