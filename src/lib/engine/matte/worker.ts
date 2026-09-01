@@ -42,7 +42,7 @@ async function ensureLoaded() {
 }
 
 self.onmessage = async (event: MessageEvent<MatteRequest>) => {
-  const { id, generation, file } = event.data;
+  const { id, generation, seq, file } = event.data;
   currentGeneration = Math.max(currentGeneration, generation);
 
   try {
@@ -83,6 +83,7 @@ self.onmessage = async (event: MessageEvent<MatteRequest>) => {
       type: "done",
       id,
       generation,
+      seq,
       result: { blob, width: image.width, height: image.height },
     });
   } catch (error) {
@@ -91,6 +92,7 @@ self.onmessage = async (event: MessageEvent<MatteRequest>) => {
       type: "error",
       id,
       generation,
+      seq,
       message: error instanceof Error ? error.message : "Background removal failed",
     });
   }

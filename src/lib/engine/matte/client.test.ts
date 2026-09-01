@@ -50,7 +50,7 @@ describe("MatteClient", () => {
     const worker = FakeWorker.instances[0];
     const sent = worker.postMessage.mock.calls[0][0];
 
-    worker.onmessage!({ data: { type: "done", id: "a", generation: sent.generation, result: result() } });
+    worker.onmessage!({ data: { type: "done", id: "a", generation: sent.generation, seq: sent.seq, result: result() } });
 
     await expect(promise).resolves.toMatchObject({ width: 10, height: 10 });
   });
@@ -61,7 +61,9 @@ describe("MatteClient", () => {
     const worker = FakeWorker.instances[0];
     const sent = worker.postMessage.mock.calls[0][0];
 
-    worker.onmessage!({ data: { type: "error", id: "a", generation: sent.generation, message: "out of memory" } });
+    worker.onmessage!({
+      data: { type: "error", id: "a", generation: sent.generation, seq: sent.seq, message: "out of memory" },
+    });
 
     await expect(promise).rejects.toThrow("out of memory");
   });
@@ -78,12 +80,15 @@ describe("MatteClient", () => {
   it("ignores a late reply for a superseded generation", async () => {
     const client = new MatteClient();
     const promise = client.matte("a", file());
+    const worker = FakeWorker.instances[0];
+    const sent = worker.postMessage.mock.calls[0][0];
     client.bumpGeneration();
     await expect(promise).rejects.toBeInstanceOf(StaleResult);
 
-    const worker = FakeWorker.instances[0];
     expect(() =>
-      worker.onmessage!({ data: { type: "done", id: "a", generation: 0, result: result() } }),
+      worker.onmessage!({
+        data: { type: "done", id: "a", generation: sent.generation, seq: sent.seq, result: result() },
+      }),
     ).not.toThrow();
   });
 
@@ -99,12 +104,6 @@ describe("MatteClient", () => {
   // before its first request has settled). Keying `pending` by id alone
   // would let the second dispatch's entry overwrite the first's, leaving
   // the first caller's promise hanging forever.
-  //
-  // The wire protocol only echoes id + generation back, with no
-  // per-dispatch token, so two dispatches sharing both are indistinguishable
-  // to us except by arrival order — the worker replies in the order it
-  // received the requests, so the first reply for this id+generation must
-  // settle the first promise, and the second reply the second.
   it("settles both requests independently when the same id is dispatched twice before either settles", async () => {
     const client = new MatteClient();
     const firstPromise = client.matte("row-1", file());
@@ -115,15 +114,48 @@ describe("MatteClient", () => {
     const firstSent = worker.postMessage.mock.calls[0][0];
     const secondSent = worker.postMessage.mock.calls[1][0];
     expect(firstSent.generation).toBe(secondSent.generation);
+    expect(firstSent.seq).not.toBe(secondSent.seq);
 
     const firstResult = { blob: new Blob(["first"]), width: 1, height: 1 };
     const secondResult = { blob: new Blob(["second"]), width: 2, height: 2 };
 
     worker.onmessage!({
-      data: { type: "done", id: "row-1", generation: firstSent.generation, result: firstResult },
+      data: { type: "done", id: "row-1", generation: firstSent.generation, seq: firstSent.seq, result: firstResult },
     });
     worker.onmessage!({
-      data: { type: "done", id: "row-1", generation: secondSent.generation, result: secondResult },
+      data: { type: "done", id: "row-1", generation: secondSent.generation, seq: secondSent.seq, result: secondResult },
+    });
+
+    await expect(firstPromise).resolves.toMatchObject({ width: 1, height: 1 });
+    await expect(secondPromise).resolves.toMatchObject({ width: 2, height: 2 });
+  });
+
+  // worker.ts's self.onmessage is async with no serialization: two
+  // overlapping requests interleave at every await (RawImage.fromBlob,
+  // processor(), model(), createImageBitmap), so the SECOND dispatch can
+  // finish and reply before the first — e.g. a smaller file decodes
+  // faster. A correlation scheme that assumes in-order replies (a FIFO
+  // queue keyed by id+generation, say) would hand the wrong result to the
+  // wrong caller here with no error. seq must make each reply resolve
+  // its own request regardless of delivery order.
+  it("resolves the correct promise even when replies for the same id arrive in reverse dispatch order", async () => {
+    const client = new MatteClient();
+    const firstPromise = client.matte("row-1", file());
+    const secondPromise = client.matte("row-1", file());
+    const worker = FakeWorker.instances[0];
+
+    const firstSent = worker.postMessage.mock.calls[0][0];
+    const secondSent = worker.postMessage.mock.calls[1][0];
+
+    const firstResult = { blob: new Blob(["first"]), width: 1, height: 1 };
+    const secondResult = { blob: new Blob(["second"]), width: 2, height: 2 };
+
+    // Reverse order: the second request's reply arrives first.
+    worker.onmessage!({
+      data: { type: "done", id: "row-1", generation: secondSent.generation, seq: secondSent.seq, result: secondResult },
+    });
+    worker.onmessage!({
+      data: { type: "done", id: "row-1", generation: firstSent.generation, seq: firstSent.seq, result: firstResult },
     });
 
     await expect(firstPromise).resolves.toMatchObject({ width: 1, height: 1 });
