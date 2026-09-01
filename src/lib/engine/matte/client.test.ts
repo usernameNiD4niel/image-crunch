@@ -94,6 +94,42 @@ describe("MatteClient", () => {
     await expect(promise).rejects.toThrow(/worker/i);
   });
 
+  // Two dispatches for the same row id, in flight at once, with no
+  // generation bump between them (e.g. the user re-triggers the same row
+  // before its first request has settled). Keying `pending` by id alone
+  // would let the second dispatch's entry overwrite the first's, leaving
+  // the first caller's promise hanging forever.
+  //
+  // The wire protocol only echoes id + generation back, with no
+  // per-dispatch token, so two dispatches sharing both are indistinguishable
+  // to us except by arrival order — the worker replies in the order it
+  // received the requests, so the first reply for this id+generation must
+  // settle the first promise, and the second reply the second.
+  it("settles both requests independently when the same id is dispatched twice before either settles", async () => {
+    const client = new MatteClient();
+    const firstPromise = client.matte("row-1", file());
+    const secondPromise = client.matte("row-1", file());
+    const worker = FakeWorker.instances[0];
+
+    expect(worker.postMessage.mock.calls).toHaveLength(2);
+    const firstSent = worker.postMessage.mock.calls[0][0];
+    const secondSent = worker.postMessage.mock.calls[1][0];
+    expect(firstSent.generation).toBe(secondSent.generation);
+
+    const firstResult = { blob: new Blob(["first"]), width: 1, height: 1 };
+    const secondResult = { blob: new Blob(["second"]), width: 2, height: 2 };
+
+    worker.onmessage!({
+      data: { type: "done", id: "row-1", generation: firstSent.generation, result: firstResult },
+    });
+    worker.onmessage!({
+      data: { type: "done", id: "row-1", generation: secondSent.generation, result: secondResult },
+    });
+
+    await expect(firstPromise).resolves.toMatchObject({ width: 1, height: 1 });
+    await expect(secondPromise).resolves.toMatchObject({ width: 2, height: 2 });
+  });
+
   it("refuses work after disposal and terminates the worker", async () => {
     const client = new MatteClient();
     client.matte("a", file()).catch(() => {});

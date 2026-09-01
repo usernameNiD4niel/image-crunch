@@ -7,6 +7,26 @@ interface Pending {
   generation: number;
 }
 
+// A pending entry is keyed by id AND the generation it was dispatched
+// under — not just id. Two matte() calls for the same row id can be in
+// flight at once (a fresh request issued before an older one for the same
+// id has settled, with no intervening bumpGeneration()); keying by id
+// alone would let the second dispatch's Map.set overwrite the first
+// entry, silently orphaning its resolve/reject forever. Mirrors
+// EncodeClient's pendingKey in src/lib/engine/client.ts.
+function pendingKey(id: string, generation: number): string {
+  return `${id}:${generation}`;
+}
+
+// The wire protocol (MatteResponse) echoes back only id + generation, with
+// no per-dispatch correlation token. So two matte() calls for the same id
+// under the same generation are indistinguishable to the worker, and their
+// replies are indistinguishable to us too — the composite key alone still
+// collides for them. Each key therefore maps to a FIFO queue rather than a
+// single entry: the worker processes/replies to messages in the order it
+// received them, so the earliest still-pending dispatch for a given key is
+// always the correct one to settle next.
+
 /**
  * One worker, one model, loaded on demand.
  *
@@ -18,7 +38,7 @@ interface Pending {
 export class MatteClient {
   private worker: Worker | null = null;
   private generation = 0;
-  private pending = new Map<string, Pending>();
+  private pending = new Map<string, Pending[]>();
   private disposed = false;
 
   private ensureWorker(): Worker {
@@ -31,21 +51,31 @@ export class MatteClient {
   }
 
   private handle(message: MatteResponse): void {
-    const entry = this.pending.get(message.id);
-    // Not just "unknown id": a late reply for a generation we have already
-    // superseded must be dropped, never delivered.
-    if (!entry || entry.generation !== message.generation) return;
-    this.pending.delete(message.id);
+    const key = pendingKey(message.id, message.generation);
+    const queue = this.pending.get(key);
+    if (!queue || queue.length === 0) return;
+    // FIFO, not "the" entry: see the queue comment above for why a key can
+    // hold more than one pending dispatch.
+    const entry = queue.shift()!;
+    if (queue.length === 0) this.pending.delete(key);
+    // Keep the generation check even though the composite key already
+    // constrains it: it costs nothing and documents the invariant a reader
+    // would otherwise have to infer from pendingKey alone.
+    if (entry.generation !== message.generation) return;
 
     if (message.type === "done") entry.resolve(message.result);
     else entry.reject(new Error(message.message));
   }
 
-  private handleWorkerError(event: { message?: string }): void {
+  private handleWorkerError(event: { message?: string; preventDefault?: () => void }): void {
+    // Mirrors EncodeClient.handleWorkerError: without this, a hard worker
+    // failure also surfaces as an uncaught error even though it is fully
+    // handled here.
+    event.preventDefault?.();
     const message = event.message ?? "the background-removal worker failed";
-    for (const [id, entry] of this.pending) {
-      entry.reject(new Error(message));
-      this.pending.delete(id);
+    for (const [key, queue] of this.pending) {
+      for (const entry of queue) entry.reject(new Error(message));
+      this.pending.delete(key);
     }
     // The model's state is unknowable after a hard failure; drop the worker
     // so the next request starts clean rather than talking to a corpse.
@@ -55,11 +85,14 @@ export class MatteClient {
 
   bumpGeneration(): number {
     this.generation += 1;
-    for (const [id, entry] of this.pending) {
-      if (entry.generation < this.generation) {
-        entry.reject(new StaleResult());
-        this.pending.delete(id);
+    for (const [key, queue] of this.pending) {
+      const survivors: Pending[] = [];
+      for (const entry of queue) {
+        if (entry.generation < this.generation) entry.reject(new StaleResult());
+        else survivors.push(entry);
       }
+      if (survivors.length === 0) this.pending.delete(key);
+      else this.pending.set(key, survivors);
     }
     return this.generation;
   }
@@ -71,16 +104,19 @@ export class MatteClient {
     const generation = this.generation;
 
     return new Promise<MatteResult>((resolve, reject) => {
-      this.pending.set(id, { resolve, reject, generation });
+      const key = pendingKey(id, generation);
+      const queue = this.pending.get(key) ?? [];
+      queue.push({ resolve, reject, generation });
+      this.pending.set(key, queue);
       worker.postMessage({ type: "matte", id, generation, file });
     });
   }
 
   dispose(): void {
     this.disposed = true;
-    for (const [id, entry] of this.pending) {
-      entry.reject(new StaleResult());
-      this.pending.delete(id);
+    for (const [key, queue] of this.pending) {
+      for (const entry of queue) entry.reject(new StaleResult());
+      this.pending.delete(key);
     }
     this.worker?.terminate();
     this.worker = null;
