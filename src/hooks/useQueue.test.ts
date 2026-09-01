@@ -174,14 +174,19 @@ vi.mock("@/lib/engine/client", () => ({
   StaleResult: MockStaleResult,
 }));
 
-const { matteMock, MockMatteClient } = vi.hoisted(() => {
+const { matteMock, matteBumpGenerationMock, MockMatteClient } = vi.hoisted(() => {
   const matteMock = vi.fn(async () => ({ blob: new Blob(["cut"]), width: 100, height: 100 }));
+  // Shared across instances, like encodeMock/MockEncodeClient above: useQueue
+  // constructs exactly one MatteClient per mount, and the test needs to
+  // assert on the SAME mock the hook actually calls — a fresh per-instance
+  // vi.fn() (the field-initializer default) would be unreachable from here.
+  const matteBumpGenerationMock = vi.fn();
   class MockMatteClient {
     matte = matteMock;
-    bumpGeneration = vi.fn();
+    bumpGeneration = matteBumpGenerationMock;
     dispose = vi.fn();
   }
-  return { matteMock, MockMatteClient };
+  return { matteMock, matteBumpGenerationMock, MockMatteClient };
 });
 
 vi.mock("@/lib/engine/matte/client", () => ({ MatteClient: MockMatteClient }));
@@ -713,10 +718,50 @@ describe("useQueue cut-outs", () => {
 
   it("cancels in-flight matting when the queue is reset", async () => {
     const hook = await settledQueue();
+    matteBumpGenerationMock.mockClear();
+
     act(() => {
       hook.result.current.cutOut(hook.result.current.items[0]);
       hook.result.current.reset();
     });
+
+    // This is the constraint reset() is supposed to implement: a reset
+    // bumps the matte generation, same as it already does for the encode
+    // client, so a real MatteClient rejects any pending matte() as
+    // StaleResult instead of letting it land later. The mock doesn't
+    // implement generation-based rejection itself, so pin the call the
+    // real client depends on directly, rather than only re-checking
+    // `items === []` — the reducer already emptied `items` on "reset"
+    // before this task existed, so that alone does not prove cancellation
+    // happened. (Verified: removing the `matteRef.current?.bumpGeneration()`
+    // line from reset() makes this assertion fail while the rest of the
+    // suite still passes.)
+    expect(matteBumpGenerationMock).toHaveBeenCalledTimes(1);
     expect(hook.result.current.items).toEqual([]);
+  });
+
+  it("does not resurrect a row removed while its matte was in flight", async () => {
+    const hook = await settledQueue();
+    let resolveMatte: ((r: { blob: Blob; width: number; height: number }) => void) | undefined;
+    matteMock.mockImplementationOnce(
+      () => new Promise((resolve) => { resolveMatte = resolve; }),
+    );
+
+    act(() => {
+      hook.result.current.cutOut(hook.result.current.items[0]);
+    });
+    act(() => {
+      hook.result.current.removeItem(hook.result.current.items[0]);
+    });
+    expect(hook.result.current.items).toEqual([]);
+
+    encodeMock.mockClear();
+    await act(async () => {
+      resolveMatte?.({ blob: new Blob(["cut"]), width: 100, height: 100 });
+      await vi.advanceTimersByTimeAsync(300);
+    });
+
+    expect(hook.result.current.items).toEqual([]);
+    expect(encodeMock).not.toHaveBeenCalled();
   });
 });

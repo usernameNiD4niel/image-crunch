@@ -358,13 +358,19 @@ export function useQueue() {
         // handler, so React is free to delay committing it (and running
         // the effect above) past a macrotask boundary the fake-timer
         // debounce below has no way to wait for. runAll reads itemsRef,
-        // not state, so mirroring the reducer's own update here is what
-        // keeps the very next sweep from encoding the stale, pre-cutout
-        // file. The dispatch still lands and produces the identical
-        // shape, so this is redundant, not a second source of truth.
-        itemsRef.current = itemsRef.current.map((i) =>
-          i.id === item.id ? { ...i, matting: false, cutout, status: "queued", error: undefined } : i,
-        );
+        // not state, so mirroring `cutout` here — the one field runAll
+        // actually reads off this ref — is what keeps the very next sweep
+        // from encoding the stale, pre-cutout file.
+        //
+        // Deliberately only `cutout`: the reducer stays the sole source of
+        // truth for everything rendered (`matting`, `status`, `error`
+        // included). Mirroring those too would risk itemsRef briefly
+        // holding a row the reducer never produced if a concurrent
+        // dispatch (e.g. a "result" from an in-flight encode) lands
+        // between this patch and React's own commit. matte-start and
+        // matte-error are unmirrored for the same reason: nothing reads
+        // `matting` or `error` off itemsRef, only off rendered state.
+        itemsRef.current = itemsRef.current.map((i) => (i.id === item.id ? { ...i, cutout } : i));
         dispatch({ type: "matte-done", id: item.id, cutout });
         scheduleSweep();
       })
@@ -376,10 +382,9 @@ export function useQueue() {
 
   const restoreBackground = useCallback(
     (item: QueueItem) => {
-      // See cutOut's comment on itemsRef above — same reasoning applies.
-      itemsRef.current = itemsRef.current.map((i) =>
-        i.id === item.id ? { ...i, cutout: undefined, matting: false, status: "queued", error: undefined } : i,
-      );
+      // See cutOut's comment on itemsRef above — same reasoning applies,
+      // and again only `cutout` (the field runAll reads) is mirrored.
+      itemsRef.current = itemsRef.current.map((i) => (i.id === item.id ? { ...i, cutout: undefined } : i));
       dispatch({ type: "matte-clear", id: item.id });
       scheduleSweep();
     },
