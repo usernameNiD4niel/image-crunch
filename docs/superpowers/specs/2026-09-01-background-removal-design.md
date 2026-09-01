@@ -117,7 +117,10 @@ Edge treatment is the difference between a demo and something usable:
 - **Mask normalisation.** Rescale the mask so its maximum is 255. The q8
   build tops out at 254, which would leave every "opaque" pixel very
   slightly transparent.
-- **Feather.** One pixel of alpha falloff so the cut edge is not a staircase.
+- **Feather.** Not a separate pass: upscaling the 1024x1024 mask to the
+  source's dimensions is a bilinear resize, which already lands a soft
+  alpha ramp across the boundary. Adding a blur on top of that would only
+  eat detail the model got right.
 - **Decontamination.** Pixels on the boundary are a blend of subject and old
   background. Left alone they show as a dark or coloured halo once composited
   on a new background. Un-blending them toward the subject colour is what
@@ -177,8 +180,10 @@ for cut ones, since a cut row never resolves to JPEG.
 - **First run.** A notice: the model is downloading, once, ~85 MB, and
   everything stays on the device. A second notice if the weights are missing
   from the deployment, naming the fetch script rather than failing silently.
-- **Capability.** Devices that can run neither WebGPU nor WASM threads get
-  the button disabled with a plain explanation, not a broken action.
+- **Capability.** WebGPU is what varies; WASM is present in every browser
+  that can run this app at all, so there is no third "cannot do it" state to
+  design. A device without WebGPU is told, once, that it is on the slower
+  path and what that costs.
 
 ## Assets and build
 
