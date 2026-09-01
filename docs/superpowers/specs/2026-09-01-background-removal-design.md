@@ -32,11 +32,28 @@ used personally, no account, no server, no cost to run.
 - **Licence.** `bria-rmbg-1.4` — free for non-commercial use under a
   Creative Commons licence; "Commercial use is subject to a commercial
   agreement with BRIA." Ship the licence text next to the weights.
-- **Hosting.** Cloudflare Pages does not meter bandwidth on static assets at
-  any tier, which is why it is the recommended host. GitHub Pages has a
-  100 GB/month soft bandwidth limit and a 1 GB site limit — at 85 MB per
-  WebGPU visitor that is roughly 1,175 first-time visitors a month, and the
-  two builds together occupy 13% of the site limit.
+- **Hosting — CORRECTED after implementation.** Cloudflare Pages does not
+  meter bandwidth, but it caps a single static asset at **25 MiB**, and that
+  limit cannot be raised. The 88 MB and 44 MB weights therefore **cannot be
+  served from Pages at all**; an earlier draft of this spec recommended it on
+  bandwidth grounds alone, which was wrong. GitHub Pages has a 100 GB/month
+  soft bandwidth limit and a 1 GB site limit — at 85 MB per WebGPU visitor
+  that is roughly 1,175 first-time visitors a month, and the weights plus the
+  vendored runtime occupy a fifth of the site limit.
+
+  The deployment options, for the owner to choose between:
+
+  1. **Cloudflare R2 public bucket, or a `static.` subdomain backed by it**,
+     serving `/models/` while Pages serves the app. Bandwidth stays unmetered
+     and the files are still the owner's own — but they come from a second
+     origin, so CORS must allow it and Editorial entry 01's "downloaded once
+     from this site" needs rewording to stay true.
+  2. **A host with no per-file cap** (GitHub Pages within its 1 GB site
+     limit, or any static host or VPS).
+  3. **Chunk the weights** into sub-25 MiB parts the loader reassembles.
+     Most work, keeps everything on one origin.
+
+  This is the only remaining decision that blocks a first deploy.
 
 ### Measured, not estimated
 
