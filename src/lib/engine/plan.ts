@@ -87,6 +87,15 @@ export function formatPercent(percent: number): string {
   return percent >= 0 ? `−${magnitude}%` : `+${magnitude}%`;
 }
 
+// The short, uppercase name for a mime type, as the compare panel captions
+// its two panes. Derived from the same EXTENSIONS table the output filenames
+// use, so a file saved as .webp is never captioned anything else; anything
+// unmapped falls back to its own subtype rather than a lie or a blank.
+export function formatLabel(mime: string): string {
+  const ext = EXTENSIONS[mime === "image/jpg" ? "image/jpeg" : mime];
+  return (ext ?? mime.split("/")[1] ?? mime).toUpperCase();
+}
+
 export function formatBytes(bytes: number): string {
   if (bytes === 0) return "0 B";
   if (bytes < 1024) return `${bytes} B`;

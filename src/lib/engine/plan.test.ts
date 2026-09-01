@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import type { EncodeResult, ItemStatus, QueueItem } from "./types";
 import {
+  formatLabel,
   isPassthrough,
   resolveOutputFormat,
   targetDimensions,
@@ -202,5 +203,20 @@ describe("currentResult", () => {
 
   it("returns undefined for a queued row that has never run", () => {
     expect(currentResult({ ...row("queued"), result: undefined })).toBeUndefined();
+  });
+});
+
+// The compare panel captions each pane with its own format, so the two are
+// self-describing rather than leaning on a shared legend.
+describe("formatLabel", () => {
+  it("names each supported mime type in the short form the UI shows", () => {
+    expect(formatLabel("image/jpeg")).toBe("JPG");
+    expect(formatLabel("image/png")).toBe("PNG");
+    expect(formatLabel("image/webp")).toBe("WEBP");
+    expect(formatLabel("image/svg+xml")).toBe("SVG");
+  });
+
+  it("falls back to the mime subtype for anything unmapped", () => {
+    expect(formatLabel("image/avif")).toBe("AVIF");
   });
 });

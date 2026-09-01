@@ -234,6 +234,9 @@ describe("QueueRow", () => {
       />,
     );
 
-    expect(screen.getByLabelText("Divider")).toBeTruthy();
+    // The panel's own contract is Compare.test.tsx's; all this row owes is
+    // that both panes are there when expanded with a result to show.
+    expect(screen.getByAltText(/^Compressed /)).toBeTruthy();
+    expect(screen.getByAltText(/^Original /)).toBeTruthy();
   });
 });

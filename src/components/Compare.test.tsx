@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
-import { render, screen, cleanup, fireEvent } from "@testing-library/react";
+import { render, screen, cleanup } from "@testing-library/react";
 import { Compare } from "./Compare";
 import { releaseAll } from "@/lib/engine/client";
 import type { QueueItem, EncodeResult } from "@/lib/engine/types";
@@ -49,15 +49,14 @@ describe("Compare", () => {
     expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:output-a");
   });
 
-  it("does not re-create the output URL on unrelated re-renders (e.g. dragging the divider)", () => {
-    render(<Compare item={item()} result={result()} />);
+  it("does not re-create the output URL on a re-render with the same blob", () => {
+    const same = result();
+    const { rerender } = render(<Compare item={item()} result={same} />);
     expect(URL.createObjectURL).toHaveBeenCalledTimes(1);
 
-    const divider = screen.getByLabelText("Divider");
-    fireEvent.change(divider, { target: { value: "30" } });
-    fireEvent.change(divider, { target: { value: "70" } });
+    rerender(<Compare item={item()} result={same} />);
+    rerender(<Compare item={item()} result={same} />);
 
-    // The blob didn't change, so no new object URL should have been minted.
     expect(URL.createObjectURL).toHaveBeenCalledTimes(1);
   });
 
@@ -75,36 +74,62 @@ describe("Compare", () => {
     expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:output-a");
   });
 
-  // jsdom cannot exercise real arrow-key handling on a range input, so this
-  // asserts the divider IS a native range input with a name and bounds — the
-  // thing that makes it keyboard-operable in a browser — rather than claiming
-  // to have driven it from the keyboard.
-  it("renders the divider as a native range input with an accessible name and 0-100 bounds", () => {
-    render(<Compare item={item()} result={result()} />);
-
-    const divider = screen.getByLabelText("Divider") as HTMLInputElement;
-    expect(divider.type).toBe("range");
-    expect(divider.min).toBe("0");
-    expect(divider.max).toBe("100");
-    expect(divider.value).toBe("50");
-
-    fireEvent.change(divider, { target: { value: "25" } });
-    expect(divider.value).toBe("25");
-  });
-
   it("renders meaningful alt text naming the file for both images", () => {
-    render(<Compare item={item({ source: { name: "vacation.png", type: "image/png", size: 1000, width: 800, height: 600 } })} result={result()} />);
+    render(
+      <Compare
+        item={item({ source: { name: "vacation.png", type: "image/png", size: 1000, width: 800, height: 600 } })}
+        result={result()}
+      />,
+    );
 
     expect(screen.getByAltText("Original vacation.png")).toBeTruthy();
     expect(screen.getByAltText("Compressed vacation.png")).toBeTruthy();
   });
 
-  it("does not render the compressed image layer at split=0, avoiding a divide-by-zero width", () => {
+  // The panel used to overlay the two images and reveal one with a draggable
+  // divider. Both are now laid out side by side, in one row, at every width:
+  // nothing is stacked on top of anything and there is nothing to drag.
+  it("lays the two images out in one two-column row, not one on top of the other", () => {
     render(<Compare item={item()} result={result()} />);
 
-    const divider = screen.getByLabelText("Divider");
-    fireEvent.change(divider, { target: { value: "0" } });
+    const compressed = screen.getByAltText("Compressed photo.png");
+    const original = screen.getByAltText("Original photo.png");
 
-    expect(screen.queryByAltText(/Compressed/)).toBeNull();
+    const row = compressed.closest("[data-compare-row]");
+    expect(row).toBeTruthy();
+    expect(row).toBe(original.closest("[data-compare-row]"));
+    expect(row?.className).toContain("grid-cols-2");
+    expect(compressed.closest("figure")).not.toBe(original.closest("figure"));
+  });
+
+  it("puts the compressed pane first, so the result reads before the source", () => {
+    render(<Compare item={item()} result={result()} />);
+
+    const figures = document.querySelectorAll("figure");
+    expect(figures[0].querySelector("img")?.getAttribute("alt")).toBe("Compressed photo.png");
+    expect(figures[1].querySelector("img")?.getAttribute("alt")).toBe("Original photo.png");
+  });
+
+  it("captions each pane with its own size and format", () => {
+    render(<Compare item={item()} result={result({ size: 500, mime: "image/jpeg" })} />);
+
+    // The captions are typed in sentence case and uppercased by the .label
+    // rule, so match the DOM text, not the rendered casing.
+    const caption = (alt: string) =>
+      screen.getByAltText(alt).closest("figure")?.querySelector("figcaption")?.textContent ?? "";
+
+    expect(caption("Compressed photo.png")).toContain("Compressed");
+    expect(caption("Compressed photo.png")).toContain("500 B");
+    expect(caption("Compressed photo.png")).toContain("JPG");
+    expect(caption("Original photo.png")).toContain("Original");
+    expect(caption("Original photo.png")).toContain("1000 B");
+    expect(caption("Original photo.png")).toContain("PNG");
+  });
+
+  it("no longer renders a divider control", () => {
+    const { container } = render(<Compare item={item()} result={result()} />);
+
+    expect(container.querySelector('input[type="range"]')).toBeNull();
+    expect(screen.queryByLabelText("Divider")).toBeNull();
   });
 });
