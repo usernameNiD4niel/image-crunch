@@ -5,12 +5,13 @@ import { DropZone, getImageDimensions } from "@/components/DropZone";
 import { Queue } from "@/components/Queue";
 import { Controls } from "@/components/Controls";
 import { Editorial } from "@/components/Editorial";
+import { Notices } from "@/components/Notices";
 import { useQueue } from "@/hooks/useQueue";
 import { trackUrl } from "@/lib/engine/client";
 import type { QueueItem } from "@/lib/engine/types";
 
 const Index = () => {
-  const { items, settings, totals, notice, pending, dispatch, downloadOne, downloadAll, removeItem } = useQueue();
+  const { items, settings, totals, notices, pending, dispatch, downloadOne, downloadAll, removeItem } = useQueue();
   const working = items.filter((i) => i.status === "working").length;
   const errors = items.filter((i) => i.status === "error").length;
 
@@ -18,12 +19,11 @@ const Index = () => {
   // once per accepted file, inside this handler, wrapped in trackUrl so
   // the registry can revoke it later (see engine/client.ts).
   //
-  // A single drop must produce a single notice. DropZone's screening
-  // (oversized/unsupported files) happens synchronously and is reported
-  // via `screeningMessage`; the dimension read below is async and can
-  // itself reject per-file (a corrupt file). Both are composed into one
-  // sentence and dispatched exactly once, after the dimension reads
-  // settle, so the second never silently clobbers the first.
+  // DropZone's screening (oversized/unsupported files) happens synchronously
+  // and is reported via `screeningMessage`; the dimension read below is async
+  // and can itself reject per-file (a corrupt file). Both are raised after the
+  // dimension reads settle, as separate notices that stack — nothing a drop
+  // has to say can overwrite anything another drop said.
   const onFiles = useCallback(
     async (files: File[], screeningMessage: string | null) => {
       const built = await Promise.all(
@@ -49,10 +49,13 @@ const Index = () => {
       const parts: string[] = [];
       if (screeningMessage) parts.push(screeningMessage);
       if (failed > 0) parts.push(`${failed} file(s) could not be read.`);
-      // Always dispatch, even with nothing to say: a clean second drop must
-      // CLEAR the previous drop's "3 unsupported file(s) skipped.", which
-      // would otherwise sit above the new files reading as a report on them.
-      dispatch({ type: "notice", message: parts.length > 0 ? parts.join(" ") : null });
+      // A clean drop CLEARS what is standing: an earlier "3 unsupported
+      // file(s) skipped." would otherwise sit above the new files reading as
+      // a report on them. A drop with something to say adds to the list
+      // instead of replacing it — the older report is still true, and the
+      // user may not have read it yet.
+      if (parts.length === 0) dispatch({ type: "clear-notices" });
+      else for (const message of parts) dispatch({ type: "notice", message });
 
       if (ok.length > 0) dispatch({ type: "add", items: ok });
     },
@@ -74,19 +77,7 @@ const Index = () => {
           element, and without the offset the notice bar and the top of the
           queue land underneath the header. */}
       <main id="tool" className="mx-auto max-w-[1440px] scroll-mt-12 border-t border-rule px-6 py-16">
-        {notice && (
-          <div className="mb-4 flex items-baseline justify-between border-b border-rule pb-2">
-            <p className="text-ink-60">{notice}</p>
-            <button
-              type="button"
-              onClick={() => dispatch({ type: "notice", message: null })}
-              aria-label="Dismiss notice"
-              className="text-ink-60"
-            >
-              ×
-            </button>
-          </div>
-        )}
+        <Notices notices={notices} onDismiss={(id) => dispatch({ type: "dismiss-notice", id })} />
 
         {items.length === 0 ? (
           <DropZone onFiles={onFiles} />

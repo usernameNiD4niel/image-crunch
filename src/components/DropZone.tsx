@@ -7,10 +7,10 @@ interface DropZoneProps {
    * Called once per drop/pick with the accepted files and, when any files
    * in that same batch were screened out, a single combined message
    * describing every category that was rejected (never just the first).
-   * The caller (Index.tsx) is responsible for folding this together with
-   * anything that happens later in the same batch (e.g. unreadable files)
-   * into one final notice, so a single drop never produces more than one
-   * notice that silently clobbers another.
+   * The caller (Index.tsx) raises this alongside anything that happens later
+   * in the same batch (e.g. unreadable files) as separate standing notices;
+   * notices stack and are dismissed individually, so neither can clobber the
+   * other.
    */
   onFiles: (files: File[], screeningMessage: string | null) => void;
   /**

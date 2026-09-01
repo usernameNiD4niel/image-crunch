@@ -4,11 +4,25 @@ import { currentResult, MAX_QUEUE, outputFilename, savingsPercent } from "@/lib/
 import { EncodeClient, releaseAll, releaseUrl, StaleResult } from "@/lib/engine/client";
 import { bundleZip } from "@/lib/engine/zip";
 
+export interface Notice {
+  id: number;
+  message: string;
+}
+
 export interface QueueState {
   items: QueueItem[];
   settings: EncodeSettings;
-  notice: string | null;
+  // A list, not a single string: a drop's screening report, its per-file read
+  // failures and the queue-cap rejection can all be raised within a tick of
+  // each other, and two drops in quick succession raise two independent
+  // reports. With one slot the loser of that race was never shown at all.
+  notices: Notice[];
+  nextNoticeId: number;
 }
+
+// Three is what fits above the queue without pushing it off screen, and no
+// user needs a scrollback of drop reports: the oldest falls off.
+export const MAX_NOTICES = 3;
 
 export const initialQueueState: QueueState = {
   items: [],
@@ -19,8 +33,17 @@ export const initialQueueState: QueueState = {
   // advice. KEEP remains one click away for anyone who needs the format
   // preserved.
   settings: { quality: 85, resize: "none", format: "image/webp" },
-  notice: null,
+  notices: [],
+  nextNoticeId: 1,
 };
+
+function withNotice(state: QueueState, message: string): QueueState {
+  return {
+    ...state,
+    notices: [...state.notices, { id: state.nextNoticeId, message }].slice(-MAX_NOTICES),
+    nextNoticeId: state.nextNoticeId + 1,
+  };
+}
 
 // One row per engine outcome, deliberately explicit: "passthrough" (never
 // decoded) and "kept" (decoded, re-encoded, output was no smaller) both ship
@@ -39,7 +62,9 @@ export type QueueAction =
   | { type: "result"; id: string; result: EncodeResult }
   | { type: "error"; id: string; message: string }
   | { type: "settings"; settings: Partial<EncodeSettings> }
-  | { type: "notice"; message: string | null };
+  | { type: "notice"; message: string }
+  | { type: "dismiss-notice"; id: number }
+  | { type: "clear-notices" };
 
 export function queueReducer(state: QueueState, action: QueueAction): QueueState {
   switch (action.type) {
@@ -47,11 +72,10 @@ export function queueReducer(state: QueueState, action: QueueAction): QueueState
       const room = MAX_QUEUE - state.items.length;
       const accepted = action.items.slice(0, Math.max(0, room));
       const rejected = action.items.length - accepted.length;
-      return {
-        ...state,
-        items: [...state.items, ...accepted],
-        notice: rejected > 0 ? `Queue holds ${MAX_QUEUE} files. ${rejected} not added.` : state.notice,
-      };
+      const added = { ...state, items: [...state.items, ...accepted] };
+      return rejected > 0
+        ? withNotice(added, `Queue holds ${MAX_QUEUE} files. ${rejected} not added.`)
+        : added;
     }
     case "remove":
       return { ...state, items: state.items.filter((i) => i.id !== action.id) };
@@ -104,7 +128,11 @@ export function queueReducer(state: QueueState, action: QueueAction): QueueState
       };
     }
     case "notice":
-      return { ...state, notice: action.message };
+      return withNotice(state, action.message);
+    case "dismiss-notice":
+      return { ...state, notices: state.notices.filter((n) => n.id !== action.id) };
+    case "clear-notices":
+      return state.notices.length === 0 ? state : { ...state, notices: [] };
     default:
       return state;
   }

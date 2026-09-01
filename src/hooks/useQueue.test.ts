@@ -24,7 +24,7 @@ describe("queueReducer", () => {
     const many = Array.from({ length: 31 }, (_, i) => item(`f${i}`));
     const state = queueReducer(initialQueueState, { type: "add", items: many });
     expect(state.items).toHaveLength(30);
-    expect(state.notice).toMatch(/30/);
+    expect(state.notices.map((n) => n.message).join(" ")).toMatch(/30/);
   });
 
   it("removes an item by id", () => {
@@ -215,6 +215,59 @@ describe("useQueue re-encode scheduling", () => {
 // During the 200ms-debounced sweep that follows ANY settings change every
 // row goes to "working" while still holding the previous run's blob. These
 // pin that none of that reaches the user as a current figure or a download.
+
+// A drop's report used to be a single string, so two drops landing within a
+// tick of each other — or one drop's screening message and the queue-cap
+// rejection from the same drop — silently overwrote one another, and the
+// message that lost the race was never seen at all.
+describe("queueReducer notices", () => {
+  it("keeps both messages when a second notice arrives before the first is dismissed", () => {
+    const one = queueReducer(initialQueueState, { type: "notice", message: "3 unsupported file(s) skipped." });
+    const two = queueReducer(one, { type: "notice", message: "1 file(s) could not be read." });
+    expect(two.notices.map((n) => n.message)).toEqual([
+      "3 unsupported file(s) skipped.",
+      "1 file(s) could not be read.",
+    ]);
+  });
+
+  it("gives each notice its own id", () => {
+    const one = queueReducer(initialQueueState, { type: "notice", message: "a" });
+    const two = queueReducer(one, { type: "notice", message: "a" });
+    expect(two.notices[0].id).not.toBe(two.notices[1].id);
+  });
+
+  it("dismisses one notice by id and leaves the rest standing", () => {
+    const one = queueReducer(initialQueueState, { type: "notice", message: "a" });
+    const two = queueReducer(one, { type: "notice", message: "b" });
+    const state = queueReducer(two, { type: "dismiss-notice", id: two.notices[0].id });
+    expect(state.notices.map((n) => n.message)).toEqual(["b"]);
+  });
+
+  it("clears every notice at once", () => {
+    const one = queueReducer(initialQueueState, { type: "notice", message: "a" });
+    const two = queueReducer(one, { type: "notice", message: "b" });
+    expect(queueReducer(two, { type: "clear-notices" }).notices).toEqual([]);
+  });
+
+  it("keeps only the three most recent notices", () => {
+    const state = ["a", "b", "c", "d"].reduce(
+      (acc, message) => queueReducer(acc, { type: "notice", message }),
+      initialQueueState,
+    );
+    expect(state.notices.map((n) => n.message)).toEqual(["b", "c", "d"]);
+  });
+
+  it("carries the queue-cap rejection alongside a message already standing", () => {
+    const dropped = queueReducer(initialQueueState, { type: "notice", message: "1 file(s) could not be read." });
+    const state = queueReducer(dropped, {
+      type: "add",
+      items: Array.from({ length: 31 }, (_, i) => item(`f${i}`)),
+    });
+    expect(state.notices).toHaveLength(2);
+    expect(state.notices[0].message).toMatch(/could not be read/);
+    expect(state.notices[1].message).toMatch(/30/);
+  });
+});
 
 describe("queueReducer settings changes", () => {
   const encoded = {
