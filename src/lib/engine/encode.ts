@@ -79,9 +79,16 @@ async function encodeIco(
   return { blob, size: blob.size };
 }
 
-/** decode -> resize -> encode, in ONE pass. */
+/**
+ * decode -> resize -> encode, in ONE pass.
+ *
+ * `input` is NOT necessarily the file the user dropped: for a cut-out row
+ * it is the matte worker's lossless PNG intermediate, and `source` still
+ * describes the dropped file. Everything below that compares the two, or
+ * hands `input` back as output, has to know the difference.
+ */
 export async function encodeOne(
-  file: Blob,
+  input: Blob,
   source: SourceInfo,
   settings: EncodeSettings,
   needsAlpha = false,
@@ -90,8 +97,8 @@ export async function encodeOne(
 
   if (isPassthrough(source.type)) {
     return {
-      blob: file,
-      size: file.size,
+      blob: input,
+      size: input.size,
       width: source.width,
       height: source.height,
       mime: source.type,
@@ -100,7 +107,7 @@ export async function encodeOne(
   }
 
   const { width, height } = targetDimensions(source.width, source.height, settings.resize);
-  const bitmap = await createImageBitmap(file);
+  const bitmap = await createImageBitmap(input);
 
   try {
     // Decided ONCE and reused for the encode branch below. Re-testing with
@@ -131,10 +138,23 @@ export async function encodeOne(
     const blob = await toBlob(canvas, offscreen, mime, settings.quality / 100);
 
     // A "compressed" file that grew is not a saving. Ship the original.
-    if (shouldKeepOriginal(file.size, blob.size) && settings.resize === "none" && mime === source.type) {
+    //
+    // Never for a cut-out, whatever the sizes say. `input` there is the
+    // matte's full-resolution PNG, not the user's file: handing it back
+    // would ship PNG bytes labelled with the source's mime, name the
+    // download after that mime, and tell the user "kept original — re-
+    // encoding did not make this file smaller" about a file that is
+    // neither the original nor that format. A cut row is offering
+    // something new; it can never report "kept".
+    if (
+      !needsAlpha &&
+      shouldKeepOriginal(input.size, blob.size) &&
+      settings.resize === "none" &&
+      mime === source.type
+    ) {
       return {
-        blob: file,
-        size: file.size,
+        blob: input,
+        size: input.size,
         width: source.width,
         height: source.height,
         mime: source.type,
