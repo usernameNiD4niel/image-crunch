@@ -1395,7 +1395,7 @@ git commit -m "feat(queue): run background removal per row and re-encode from th
 - Modify: `src/components/QueueRow.tsx`
 - Modify: `src/components/QueueRow.test.tsx`
 - Modify: `src/components/Queue.tsx` (pass the callbacks through)
-- Modify: `src/components/Queue.test.tsx`
+- Modify: `src/components/Queue.test.tsx` — every existing `<Queue …/>` render must gain `onCutOut={() => {}} onRestore={() => {}} jpgRequested={false}`, and every existing `<QueueRow …/>` render in `QueueRow.test.tsx` must gain `onCutOut={noop} onRestore={noop}`, or `npm run typecheck` fails even though the suite passes
 - Modify: `src/components/Compare.tsx` (checkerboard)
 - Modify: `src/components/Compare.test.tsx`
 - Modify: `src/pages/Index.tsx` (wire the callbacks)
@@ -1641,7 +1641,7 @@ git commit -m "feat(ui): cut-out control on each row and a transparent-aware pre
 - Create: `src/components/Editorial.test.tsx`
 
 **Interfaces:**
-- Consumes: `isModelPresent` (Task 1), `pickDevice` (Task 3), `cutOut` (Task 6).
+- Consumes: `isModelPresent`, `pickDevice` (both Task 1), `cutOut` (Task 6).
 - Produces: nothing new for later tasks.
 
 - [ ] **Step 1: Write the failing test**
@@ -1701,7 +1701,8 @@ In `src/pages/Index.tsx`, wrap the cut-out callback so the first invocation expl
     async (item: QueueItem) => {
       if (!modelWarned) {
         setModelWarned(true);
-        if (!(await isModelPresent())) {
+        const device = pickDevice();
+        if (!(await isModelPresent(device))) {
           dispatch({
             type: "notice",
             message:
@@ -1712,7 +1713,7 @@ In `src/pages/Index.tsx`, wrap the cut-out callback so the first invocation expl
         dispatch({
           type: "notice",
           message:
-            pickDevice() === "webgpu"
+            device === "webgpu"
               ? "Downloading the background model — about 85 MB, once. It stays on your device."
               : "This browser has no WebGPU, so background removal uses the slower fallback: about 43 MB to download, and a few seconds per image.",
         });
