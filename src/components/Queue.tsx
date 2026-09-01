@@ -10,9 +10,13 @@ interface QueueProps {
   totals: { count: number; input: number; output: number; percent: number };
   onDownloadOne: (item: QueueItem) => void;
   onRemove: (item: QueueItem) => void;
+  onCutOut: (item: QueueItem) => void;
+  onRestore: (item: QueueItem) => void;
+  /** True when the queue's format setting is JPG, which cannot hold a cut-out's transparency. */
+  jpgRequested: boolean;
 }
 
-export function Queue({ items, pending, totals, onDownloadOne, onRemove }: QueueProps) {
+export function Queue({ items, pending, totals, onDownloadOne, onRemove, onCutOut, onRestore, jpgRequested }: QueueProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   return (
@@ -36,6 +40,9 @@ export function Queue({ items, pending, totals, onDownloadOne, onRemove }: Queue
             onToggle={() => setExpandedId(expandedId === item.id ? null : item.id)}
             onDownload={() => onDownloadOne(item)}
             onRemove={() => onRemove(item)}
+            onCutOut={() => onCutOut(item)}
+            onRestore={() => onRestore(item)}
+            formatSubstituted={!!item.cutout && jpgRequested}
           />
         ))}
       </ul>

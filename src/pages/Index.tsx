@@ -11,7 +11,20 @@ import { trackUrl } from "@/lib/engine/client";
 import type { QueueItem } from "@/lib/engine/types";
 
 const Index = () => {
-  const { items, settings, totals, notices, pending, dispatch, downloadOne, downloadAll, removeItem, reset } = useQueue();
+  const {
+    items,
+    settings,
+    totals,
+    notices,
+    pending,
+    dispatch,
+    downloadOne,
+    downloadAll,
+    removeItem,
+    reset,
+    cutOut,
+    restoreBackground,
+  } = useQueue();
   const working = items.filter((i) => i.status === "working").length;
   const errors = items.filter((i) => i.status === "error").length;
 
@@ -83,7 +96,16 @@ const Index = () => {
           <DropZone onFiles={onFiles} />
         ) : (
           <>
-            <Queue items={items} pending={pending} totals={totals} onDownloadOne={downloadOne} onRemove={removeItem} />
+            <Queue
+              items={items}
+              pending={pending}
+              totals={totals}
+              onDownloadOne={downloadOne}
+              onRemove={removeItem}
+              onCutOut={cutOut}
+              onRestore={restoreBackground}
+              jpgRequested={settings.format === "image/jpeg"}
+            />
             <DropZone onFiles={onFiles} compact />
             <Controls
               settings={settings}

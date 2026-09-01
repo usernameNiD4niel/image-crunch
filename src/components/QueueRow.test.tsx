@@ -1,5 +1,5 @@
-import { describe, it, expect, afterEach } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
+import { describe, it, expect, afterEach, vi } from "vitest";
+import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import { QueueRow } from "./QueueRow";
 import type { QueueItem } from "@/lib/engine/types";
 
@@ -32,6 +32,8 @@ describe("QueueRow", () => {
         onToggle={noop}
         onDownload={noop}
         onRemove={noop}
+        onCutOut={noop}
+        onRestore={noop}
       />,
     );
 
@@ -53,6 +55,8 @@ describe("QueueRow", () => {
         onToggle={noop}
         onDownload={noop}
         onRemove={noop}
+        onCutOut={noop}
+        onRestore={noop}
       />,
     );
 
@@ -77,6 +81,8 @@ describe("QueueRow", () => {
         onToggle={noop}
         onDownload={noop}
         onRemove={noop}
+        onCutOut={noop}
+        onRestore={noop}
       />,
     );
 
@@ -93,6 +99,8 @@ describe("QueueRow", () => {
         onToggle={noop}
         onDownload={noop}
         onRemove={noop}
+        onCutOut={noop}
+        onRestore={noop}
       />,
     );
 
@@ -112,6 +120,8 @@ describe("QueueRow", () => {
         onToggle={noop}
         onDownload={noop}
         onRemove={noop}
+        onCutOut={noop}
+        onRestore={noop}
       />,
     );
 
@@ -140,6 +150,8 @@ describe("QueueRow", () => {
         onToggle={noop}
         onDownload={noop}
         onRemove={noop}
+        onCutOut={noop}
+        onRestore={noop}
       />,
     );
 
@@ -158,6 +170,8 @@ describe("QueueRow", () => {
         onToggle={noop}
         onDownload={noop}
         onRemove={noop}
+        onCutOut={noop}
+        onRestore={noop}
       />,
     );
 
@@ -177,6 +191,8 @@ describe("QueueRow", () => {
         onToggle={noop}
         onDownload={noop}
         onRemove={noop}
+        onCutOut={noop}
+        onRestore={noop}
       />,
     );
     void container;
@@ -195,6 +211,8 @@ describe("QueueRow", () => {
         onToggle={noop}
         onDownload={noop}
         onRemove={noop}
+        onCutOut={noop}
+        onRestore={noop}
       />,
     );
 
@@ -213,6 +231,8 @@ describe("QueueRow", () => {
         onToggle={noop}
         onDownload={noop}
         onRemove={noop}
+        onCutOut={noop}
+        onRestore={noop}
       />,
     );
 
@@ -231,6 +251,8 @@ describe("QueueRow", () => {
         onToggle={noop}
         onDownload={noop}
         onRemove={noop}
+        onCutOut={noop}
+        onRestore={noop}
       />,
     );
 
@@ -238,5 +260,127 @@ describe("QueueRow", () => {
     // that both panes are there when expanded with a result to show.
     expect(screen.getByAltText(/^Compressed /)).toBeTruthy();
     expect(screen.getByAltText(/^Original /)).toBeTruthy();
+  });
+});
+
+describe("QueueRow background removal", () => {
+  it("offers to cut out the background, naming the file", () => {
+    const onCutOut = vi.fn();
+    render(
+      <QueueRow
+        index={0}
+        item={baseItem({ status: "done" })}
+        expanded={false}
+        onToggle={noop}
+        onDownload={noop}
+        onRemove={noop}
+        onCutOut={onCutOut}
+        onRestore={noop}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Cut out background from photo.png" }));
+    expect(onCutOut).toHaveBeenCalledTimes(1);
+  });
+
+  it("says what it is doing while the model runs, and disables the control", () => {
+    render(
+      <QueueRow
+        index={0}
+        item={baseItem({ status: "working", matting: true })}
+        expanded={false}
+        onToggle={noop}
+        onDownload={noop}
+        onRemove={noop}
+        onCutOut={noop}
+        onRestore={noop}
+      />,
+    );
+
+    expect(screen.getByText(/removing background/i)).toBeTruthy();
+    const button = screen.getByRole("button", { name: /background from photo\.png/ }) as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+  });
+
+  it("offers to restore once the row is cut out, and says so", () => {
+    const onRestore = vi.fn();
+    render(
+      <QueueRow
+        index={0}
+        item={baseItem({ status: "done", cutout: { blob: new Blob(), width: 10, height: 10 } })}
+        expanded={false}
+        onToggle={noop}
+        onDownload={noop}
+        onRemove={noop}
+        onCutOut={noop}
+        onRestore={onRestore}
+      />,
+    );
+
+    expect(screen.getByText(/^cut out/i)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Restore background from photo.png" }));
+    expect(onRestore).toHaveBeenCalledTimes(1);
+  });
+
+  // JPG cannot hold transparency, so the row must say where its output
+  // actually went rather than quietly disagreeing with the FORMAT control.
+  it("states the format substitution when the output had to change", () => {
+    render(
+      <QueueRow
+        index={0}
+        item={baseItem({
+          status: "done",
+          cutout: { blob: new Blob(), width: 10, height: 10 },
+          result: { blob: new Blob(), size: 90, width: 10, height: 10, mime: "image/webp", outcome: "encoded" },
+        })}
+        expanded={false}
+        onToggle={noop}
+        onDownload={noop}
+        onRemove={noop}
+        onCutOut={noop}
+        onRestore={noop}
+        formatSubstituted
+      />,
+    );
+
+    expect(screen.getByText(/JPG has no transparency/i)).toBeTruthy();
+  });
+
+  it("renders no cut-out control on a passthrough row", () => {
+    render(
+      <QueueRow
+        index={0}
+        item={baseItem({
+          status: "passthrough",
+          source: { name: "icon.svg", type: "image/svg+xml", size: 500, width: 32, height: 32 },
+          result: { blob: new Blob(), size: 500, width: 32, height: 32, mime: "image/svg+xml", outcome: "passthrough" },
+        })}
+        expanded={false}
+        onToggle={noop}
+        onDownload={noop}
+        onRemove={noop}
+        onCutOut={noop}
+        onRestore={noop}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: /background from/ })).toBeNull();
+  });
+
+  it("still offers the cut-out control on a raster row", () => {
+    render(
+      <QueueRow
+        index={0}
+        item={baseItem({ status: "done" })}
+        expanded={false}
+        onToggle={noop}
+        onDownload={noop}
+        onRemove={noop}
+        onCutOut={noop}
+        onRestore={noop}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: /background from/ })).toBeTruthy();
   });
 });

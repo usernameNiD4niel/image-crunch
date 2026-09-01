@@ -31,6 +31,9 @@ describe("Queue total", () => {
         totals={zeroTotals}
         onDownloadOne={() => {}}
         onRemove={() => {}}
+        onCutOut={() => {}}
+        onRestore={() => {}}
+        jpgRequested={false}
       />,
     );
 
@@ -46,6 +49,9 @@ describe("Queue total", () => {
         totals={{ count: 1, input: 1000, output: 250, percent: 75 }}
         onDownloadOne={() => {}}
         onRemove={() => {}}
+        onCutOut={() => {}}
+        onRestore={() => {}}
+        jpgRequested={false}
       />,
     );
 
