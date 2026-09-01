@@ -61,6 +61,8 @@ export function decontaminateEdges(
 ): void {
   // Read from a copy: a corrected pixel must not become the source for the
   // next pixel's correction, or the fix smears along the edge.
+  // Peak cost: a second full RGBA buffer — ~80 MB for a 20 MP source, on
+  // top of the one being corrected.
   const source = new Uint8ClampedArray(rgba);
 
   for (let y = 0; y < height; y += 1) {

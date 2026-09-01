@@ -223,7 +223,7 @@ for cut ones, since a cut row never resolves to JPEG.
   finding 3 above.
 - The script runs on install/deploy; the build fails loudly if the weights
   are absent, so a deployment can never silently ship a broken button.
-- `public/models/rmbg-1.4/LICENSE.txt` ships beside the weights.
+- `public/models/briaai/RMBG-1.4/LICENSE.txt` ships beside the weights.
 - Editorial entry 01 gains one line: the model is downloaded from this site
   once, inference is local, images still never leave the browser.
 
