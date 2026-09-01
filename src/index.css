@@ -9,8 +9,14 @@
   --paper: oklch(0.985 0.004 90);
   --paper-2: oklch(0.962 0.005 90);
   --ink: oklch(0.145 0 0);
-  --ink-60: oklch(0.145 0 0 / 60%);
-  --ink-38: oklch(0.145 0 0 / 38%);
+  /* The muted text tiers, named for their alpha. Both are TEXT — secondary
+     copy, row indices, the passthrough dash — so both clear 4.5:1 against
+     --paper and --paper-2 (72% reads 8.1:1, 58% reads 4.8:1); the earlier
+     60%/38% pair put the quiet tier at 2.5:1, which was not legible text at
+     all. src/index.contrast.test.ts holds the line. Hairlines that are not
+     text live in --rule and are exempt. */
+  --ink-72: oklch(0.145 0 0 / 72%);
+  --ink-58: oklch(0.145 0 0 / 58%);
   --rule: oklch(0.145 0 0 / 12%);
   --signal: oklch(0.62 0.24 27);
   --signal-ink: oklch(1 0 0);
@@ -21,8 +27,8 @@
   --color-paper: var(--paper);
   --color-paper-2: var(--paper-2);
   --color-ink: var(--ink);
-  --color-ink-60: var(--ink-60);
-  --color-ink-38: var(--ink-38);
+  --color-ink-72: var(--ink-72);
+  --color-ink-58: var(--ink-58);
   --color-rule: var(--rule);
   --color-signal: var(--signal);
   --color-signal-ink: var(--signal-ink);
@@ -114,14 +120,14 @@
   --secondary: var(--paper-2);
   --secondary-foreground: var(--ink);
   --muted: var(--paper-2);
-  --muted-foreground: var(--ink-60);
+  --muted-foreground: var(--ink-72);
   --accent: var(--paper-2);
   --accent-foreground: var(--ink);
   --destructive: var(--ink);
   --destructive-foreground: var(--paper);
   --border: var(--rule);
   --input: var(--rule);
-  --ring: var(--ink-38);
+  --ring: var(--ink-58);
 }
 
 @theme inline {

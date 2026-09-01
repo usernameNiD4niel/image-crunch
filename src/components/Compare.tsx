@@ -60,7 +60,7 @@ export function Compare({ item, result }: CompareProps) {
       {/* The visible label IS the accessible name — there is no separate
           aria-label, so a sighted user and a screen-reader user call this
           control the same thing. */}
-      <label className="label mt-3 block text-ink-60" htmlFor={`split-${item.id}`}>
+      <label className="label mt-3 block text-ink-72" htmlFor={`split-${item.id}`}>
         Divider
       </label>
       {/*
@@ -83,7 +83,7 @@ export function Compare({ item, result }: CompareProps) {
         className="w-full accent-[var(--ink)]"
       />
 
-      <div className="data mt-2 flex justify-between text-[0.8125rem] text-ink-60">
+      <div className="data mt-2 flex justify-between text-[0.8125rem] text-ink-72">
         <span>COMPRESSED</span>
         <span>ORIGINAL</span>
       </div>

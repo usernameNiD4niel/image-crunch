@@ -30,11 +30,11 @@ export function QueueRow({ index, item, expanded, onToggle, onDownload, onRemove
       size="sm"
       className="grid grid-cols-12 items-baseline gap-x-4 gap-y-1 rounded-none border-x-0 border-t-0 border-b border-rule px-0 py-4 duration-[140ms] ease-[var(--ease)] focus-visible:border-transparent focus-visible:ring-0"
     >
-      <span className="data col-span-1 text-ink-38">{String(index + 1).padStart(2, "0")}</span>
+      <span className="data col-span-1 text-ink-58">{String(index + 1).padStart(2, "0")}</span>
 
       <span className="col-span-4 truncate">{item.source.name}</span>
 
-      <span className="data col-span-3 text-[0.8125rem] text-ink-60">
+      <span className="data col-span-3 text-[0.8125rem] text-ink-72">
         {item.source.width}×{item.source.height}
         {result?.outcome === "encoded" && ` → ${result.width}×${result.height}`}
       </span>
@@ -45,7 +45,7 @@ export function QueueRow({ index, item, expanded, onToggle, onDownload, onRemove
           from the settings the user had just changed away from. */}
       <span className="data col-span-2 text-[0.8125rem]">
         {working ? (
-          <span className="inline-flex items-center gap-2 text-ink-60">
+          <span className="inline-flex items-center gap-2 text-ink-72">
             <Spinner className="size-3.5" />
             encoding…
           </span>
@@ -63,10 +63,10 @@ export function QueueRow({ index, item, expanded, onToggle, onDownload, onRemove
             report — a dash, not a "0.0%" that would imply we tried. A kept
             original WAS re-encoded, so its (zero or negative) figure is real
             and gets shown, but never in --signal: it is not a saving. */}
-        {item.status === "passthrough" && <span className="text-ink-38">—</span>}
-        {item.status === "kept" && <span className="text-ink-60">{formatPercent(percent)}</span>}
+        {item.status === "passthrough" && <span className="text-ink-58">—</span>}
+        {item.status === "kept" && <span className="text-ink-72">{formatPercent(percent)}</span>}
         {result?.outcome === "encoded" && (
-          <span className={percent >= 0 ? "text-signal" : "text-ink-60"}>{formatPercent(percent)}</span>
+          <span className={percent >= 0 ? "text-signal" : "text-ink-72"}>{formatPercent(percent)}</span>
         )}
       </span>
 
@@ -85,7 +85,7 @@ export function QueueRow({ index, item, expanded, onToggle, onDownload, onRemove
           onClick={onDownload}
           disabled={!result}
           aria-label={`Download ${item.source.name}`}
-          className="focus-visible:ring-0 disabled:text-ink-38"
+          className="focus-visible:ring-0 disabled:text-ink-58"
         >
           ↓
         </button>
@@ -100,17 +100,17 @@ export function QueueRow({ index, item, expanded, onToggle, onDownload, onRemove
       </ItemActions>
 
       {item.status === "passthrough" && (
-        <p className="data col-span-11 col-start-2 text-[0.8125rem] text-ink-38">passthrough — no gain</p>
+        <p className="data col-span-11 col-start-2 text-[0.8125rem] text-ink-58">passthrough — no gain</p>
       )}
 
       {item.status === "kept" && (
-        <p className="data col-span-11 col-start-2 text-[0.8125rem] text-ink-60">
+        <p className="data col-span-11 col-start-2 text-[0.8125rem] text-ink-72">
           kept original — re-encoding did not make this file smaller
         </p>
       )}
 
       {item.status === "error" && (
-        <p className="data col-span-11 col-start-2 text-[0.8125rem] text-ink-60">{item.error}</p>
+        <p className="data col-span-11 col-start-2 text-[0.8125rem] text-ink-72">{item.error}</p>
       )}
 
       {/* Deliberately item.result, not `result`: the compare panel holds

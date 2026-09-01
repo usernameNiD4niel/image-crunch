@@ -27,12 +27,12 @@ export function Statement() {
       </div>
 
       <aside className="self-end md:col-span-4 md:col-start-9">
-        <ul className="label space-y-1 text-ink-60">
+        <ul className="label space-y-1 text-ink-72">
           <li>Free</li>
           <li>No account</li>
           <li>On-device</li>
         </ul>
-        <p className="mt-6 max-w-[42ch] text-ink-60">
+        <p className="mt-6 max-w-[42ch] text-ink-72">
           Every byte is processed in your own browser. Nothing is uploaded, ever.
         </p>
       </aside>

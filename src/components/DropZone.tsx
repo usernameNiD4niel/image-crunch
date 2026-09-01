@@ -117,7 +117,7 @@ export function DropZone({ onFiles, compact = false }: DropZoneProps) {
         }`}
       >
         <span className="label text-ink">Add more</span>
-        <span className="data text-[0.8125rem] text-ink-38">up to 35 MB each · 30 files max</span>
+        <span className="data text-[0.8125rem] text-ink-58">up to 35 MB each · 30 files max</span>
         {input}
       </div>
     );
@@ -136,10 +136,10 @@ export function DropZone({ onFiles, compact = false }: DropZoneProps) {
     >
       <EmptyHeader className="max-w-none items-start gap-1 text-left">
         <EmptyTitle className="label text-ink">Drop images</EmptyTitle>
-        <EmptyDescription className="text-ink-60">
+        <EmptyDescription className="text-ink-72">
           or click to choose · up to 35 MB each · 30 files max
         </EmptyDescription>
-        <span className="data mt-2 block text-[0.8125rem] text-ink-38">
+        <span className="data mt-2 block text-[0.8125rem] text-ink-58">
           JPG · PNG · WEBP · GIF · SVG · ICO
         </span>
       </EmptyHeader>

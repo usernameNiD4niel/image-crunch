@@ -18,21 +18,21 @@ export function Masthead({ count, working, errors, totals, onDownloadAll }: Mast
           {working > 0 ? (
             <span>WORKING · {working} OF {count}</span>
           ) : count === 0 ? (
-            <span className="text-ink-60">IDLE · 0 FILES</span>
+            <span className="text-ink-72">IDLE · 0 FILES</span>
           ) : totals.count > 0 ? (
             <>
               {/* Below 768px only the percentage and the action survive — the
                   masthead is 48px tall and the byte figures are the first
                   thing that can be dropped without losing the headline fact. */}
-              <span className="hidden text-ink-60 md:inline">
+              <span className="hidden text-ink-72 md:inline">
                 {totals.count} FILES · {formatBytes(totals.input)} → {formatBytes(totals.output)}
               </span>
               {/* Completed work must not hide failed work: a queue that
                   finished some files and failed others used to report only
                   the successes. Kept outside the md-only span so the failure
                   count survives the mobile truncation. */}
-              {errors > 0 && <span className="text-ink-60">{errors} FAILED</span>}
-              <span className={totals.percent >= 0 ? "text-signal" : "text-ink-60"}>
+              {errors > 0 && <span className="text-ink-72">{errors} FAILED</span>}
+              <span className={totals.percent >= 0 ? "text-signal" : "text-ink-72"}>
                 {formatPercent(totals.percent)}
               </span>
               <button
@@ -44,9 +44,9 @@ export function Masthead({ count, working, errors, totals, onDownloadAll }: Mast
               </button>
             </>
           ) : errors > 0 ? (
-            <span className="text-ink-60">{count} FILES · {errors} FAILED</span>
+            <span className="text-ink-72">{count} FILES · {errors} FAILED</span>
           ) : (
-            <span className="text-ink-60">{count} FILES · QUEUED</span>
+            <span className="text-ink-72">{count} FILES · QUEUED</span>
           )}
         </div>
       </div>

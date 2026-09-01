@@ -23,7 +23,7 @@ export function Queue({ items, pending, totals, onDownloadOne, onRemove }: Queue
         <h2 id="queue-heading" className="label">
           Queue
         </h2>
-        <span className="data text-[0.8125rem] text-ink-60">{items.length} FILES</span>
+        <span className="data text-[0.8125rem] text-ink-72">{items.length} FILES</span>
       </div>
 
       <ul>
@@ -51,11 +51,11 @@ export function Queue({ items, pending, totals, onDownloadOne, onRemove }: Queue
             has already moved off; stating the empty one would read out a
             0 B → 0 B that was never true. Say what is happening instead. */}
         {pending > 0 ? (
-          <span className="text-ink-60">re-encoding {pending} file(s)…</span>
+          <span className="text-ink-72">re-encoding {pending} file(s)…</span>
         ) : (
           <span>
             {formatBytes(totals.input)} → {formatBytes(totals.output)}{" "}
-            <span className={totals.percent >= 0 ? "text-signal" : "text-ink-60"}>
+            <span className={totals.percent >= 0 ? "text-signal" : "text-ink-72"}>
               {formatPercent(totals.percent)}
             </span>
           </span>

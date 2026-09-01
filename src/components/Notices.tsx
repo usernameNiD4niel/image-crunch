@@ -18,14 +18,14 @@ export function Notices({ notices, onDismiss }: NoticesProps) {
     <div className="mb-4 border-b border-rule pb-2">
       {notices.map((notice) => (
         <div key={notice.id} className="flex items-baseline justify-between">
-          <p className="text-ink-60">{notice.message}</p>
+          <p className="text-ink-72">{notice.message}</p>
           <button
             type="button"
             onClick={() => onDismiss(notice.id)}
             // Named, not a bare "Dismiss notice": with several standing at
             // once a screen reader otherwise hears the same button repeated.
             aria-label={`Dismiss notice: ${notice.message}`}
-            className="text-ink-60"
+            className="text-ink-72"
           >
             ×
           </button>

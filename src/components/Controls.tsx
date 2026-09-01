@@ -26,7 +26,7 @@ const RESIZES: { value: ResizePreset; label: string }[] = [
 
 function segmentButtonClass(selected: boolean) {
   return `data border px-3 py-1 text-[0.8125rem] transition-colors duration-[140ms] ease-[var(--ease)] focus-visible:ring-0 ${
-    selected ? "border-ink bg-ink text-paper" : "border-rule text-ink-60"
+    selected ? "border-ink bg-ink text-paper" : "border-rule text-ink-72"
   }`;
 }
 
@@ -99,7 +99,7 @@ function SegmentedField<T>({
 
   return (
     <Field className={className}>
-      <FieldLabel id={`${id}-label`} className="label text-ink-60">
+      <FieldLabel id={`${id}-label`} className="label text-ink-72">
         {label}
       </FieldLabel>
       <FieldContent>
@@ -132,7 +132,7 @@ export function Controls({ settings, onChange, onDownloadAll, disabled }: Contro
     <div className="sticky bottom-0 z-40 border-t border-ink bg-paper py-4">
       <div className="grid grid-cols-1 gap-6 md:grid-cols-12 md:items-center">
         <Field className="md:col-span-4">
-          <FieldLabel className="label text-ink-60">
+          <FieldLabel className="label text-ink-72">
             Quality <span className="data text-ink">{settings.quality}</span>
           </FieldLabel>
           <FieldContent>

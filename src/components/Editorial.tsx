@@ -21,13 +21,13 @@ export function Editorial() {
     <section className="mx-auto max-w-[1440px] px-6">
       {ENTRIES.map((entry) => (
         <article key={entry.n} className="grid grid-cols-1 gap-4 border-t border-rule py-10 md:grid-cols-12">
-          <span className="data md:col-span-1 text-ink-38">{entry.n}</span>
+          <span className="data md:col-span-1 text-ink-58">{entry.n}</span>
           <h2 className="md:col-span-4 text-[2.25rem] leading-tight tracking-[-0.02em]">{entry.title}</h2>
-          <p className="md:col-span-6 md:col-start-7 max-w-[62ch] text-ink-60">{entry.body}</p>
+          <p className="md:col-span-6 md:col-start-7 max-w-[62ch] text-ink-72">{entry.body}</p>
         </article>
       ))}
 
-      <footer className="data border-t border-rule py-8 text-[0.8125rem] text-ink-38">
+      <footer className="data border-t border-rule py-8 text-[0.8125rem] text-ink-58">
         IMAGE CRUNCH · 2026 · DANIEL REY · TYPE: ARCHIVO / JETBRAINS MONO
       </footer>
     </section>
