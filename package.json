@@ -11,7 +11,9 @@
     "typecheck": "tsc -b",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "fetch-model": "node scripts/fetch-model.mjs",
+    "prebuild": "node scripts/fetch-model.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
