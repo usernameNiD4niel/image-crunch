@@ -9,16 +9,17 @@ export interface EncodeRequest {
   file: File;
   source: SourceInfo;
   settings: EncodeSettings;
+  needsAlpha?: boolean;
 }
 
 let currentGeneration = 0;
 
 self.onmessage = async (event: MessageEvent<EncodeRequest>) => {
-  const { id, generation, file, source, settings } = event.data;
+  const { id, generation, file, source, settings, needsAlpha } = event.data;
   currentGeneration = Math.max(currentGeneration, generation);
 
   try {
-    const result = await encodeOne(file, source, settings);
+    const result = await encodeOne(file, source, settings, needsAlpha);
 
     // Settings moved on while we were encoding — drop it.
     if (generation < currentGeneration) return;

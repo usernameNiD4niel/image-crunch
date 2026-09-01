@@ -42,11 +42,21 @@ export function isPassthrough(type: string): boolean {
   return PASSTHROUGH_TYPES.includes(type);
 }
 
-export function resolveOutputFormat(sourceType: string, format: OutputFormat): string {
+export function resolveOutputFormat(
+  sourceType: string,
+  format: OutputFormat,
+  needsAlpha = false,
+): string {
   const source = sourceType === "image/jpg" ? "image/jpeg" : sourceType;
   if (isPassthrough(source)) return source;
-  if (format === "keep") return source === "image/gif" ? "image/png" : source;
-  return format;
+
+  const resolved = format === "keep" ? (source === "image/gif" ? "image/png" : source) : format;
+
+  // A cut-out has transparency to lose. WebP rather than PNG because it
+  // carries alpha at a fraction of the size, and this app exists to make
+  // files smaller.
+  if (needsAlpha && resolved === "image/jpeg") return "image/webp";
+  return resolved;
 }
 
 export function targetDimensions(

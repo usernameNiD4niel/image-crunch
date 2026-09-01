@@ -84,8 +84,9 @@ export async function encodeOne(
   file: File,
   source: SourceInfo,
   settings: EncodeSettings,
+  needsAlpha = false,
 ): Promise<EncodeResult> {
-  const mime = resolveOutputFormat(source.type, settings.format);
+  const mime = resolveOutputFormat(source.type, settings.format, needsAlpha);
 
   if (isPassthrough(source.type)) {
     return {

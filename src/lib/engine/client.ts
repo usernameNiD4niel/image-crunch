@@ -122,6 +122,7 @@ export class EncodeClient {
     file: File,
     source: SourceInfo,
     settings: EncodeSettings,
+    needsAlpha = false,
   ): Promise<EncodeResult> {
     if (this.disposed) {
       throw new Error("EncodeClient has been disposed");
@@ -130,7 +131,7 @@ export class EncodeClient {
     const generation = this.generation;
 
     if (!this.useWorkers || this.workers.length === 0) {
-      const result = await encodeOne(file, source, settings);
+      const result = await encodeOne(file, source, settings, needsAlpha);
       if (generation < this.generation) throw new StaleResult();
       return result;
     }
@@ -140,7 +141,7 @@ export class EncodeClient {
 
     return new Promise<EncodeResult>((resolve, reject) => {
       this.pending.set(pendingKey(id, generation), { resolve, reject, generation, workerId: slot.id });
-      slot.worker.postMessage({ type: "encode", id, generation, file, source, settings });
+      slot.worker.postMessage({ type: "encode", id, generation, file, source, settings, needsAlpha });
     });
   }
 
