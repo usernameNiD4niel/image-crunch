@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
 import type { EncodeOutcome, EncodeResult, EncodeSettings, ItemStatus, QueueItem } from "@/lib/engine/types";
 import { currentResult, MAX_QUEUE, outputFilename, savingsPercent } from "@/lib/engine/plan";
 import { EncodeClient, releaseAll, releaseUrl, StaleResult } from "@/lib/engine/client";
+import { MatteClient } from "@/lib/engine/matte/client";
 import { bundleZip } from "@/lib/engine/zip";
 
 export interface Notice {
@@ -186,13 +187,16 @@ export function queueReducer(state: QueueState, action: QueueAction): QueueState
 export function useQueue() {
   const [state, dispatch] = useReducer(queueReducer, initialQueueState);
   const clientRef = useRef<EncodeClient | null>(null);
+  const matteRef = useRef<MatteClient | null>(null);
   const debounceRef = useRef<number | undefined>(undefined);
 
   if (clientRef.current === null) clientRef.current = new EncodeClient();
+  if (matteRef.current === null) matteRef.current = new MatteClient();
 
   useEffect(() => {
     return () => {
       clientRef.current?.dispose();
+      matteRef.current?.dispose();
       releaseAll();
     };
   }, []);
@@ -218,7 +222,7 @@ export function useQueue() {
     for (const item of itemsRef.current) {
       dispatch({ type: "working", id: item.id });
       client
-        .encode(item.id, item.file, item.source, settingsRef.current)
+        .encode(item.id, item.cutout?.blob ?? item.file, item.source, settingsRef.current, !!item.cutout)
         .then((result) => dispatch({ type: "result", id: item.id, result }))
         .catch((error) => {
           if (error instanceof StaleResult) return; // superseded, not a failure
@@ -226,6 +230,19 @@ export function useQueue() {
         });
     }
   }, []);
+
+  // (Re)start the 200ms debounce. Pulled out of the effect below so a
+  // cut-out/restore can call it directly the moment its dispatch fires,
+  // rather than waiting on a render + effect round trip: that dispatch
+  // happens inside a Promise callback (matte() resolving), not a React
+  // event handler, so React's passive-effect flush for the resulting
+  // re-render is not guaranteed to land inside the same macrotask/tick —
+  // calling this directly keeps cut-out scheduling exactly as prompt as
+  // every other trigger.
+  const scheduleSweep = useCallback(() => {
+    window.clearTimeout(debounceRef.current);
+    debounceRef.current = window.setTimeout(runAll, 200);
+  }, [runAll]);
 
   // Debounced re-encode. Keyed ONLY on values that should genuinely
   // trigger a fresh sweep: which files are queued (by id, order-stable
@@ -236,19 +253,26 @@ export function useQueue() {
   // re-trigger this effect (see runAll's comment above for why that
   // matters).
   const itemIdsKey = state.items.map((i) => i.id).join(",");
+  // Changes when any row's cut-out appears OR disappears, so the effect
+  // below also re-fires on `matte-done`/`matte-clear` — those dispatches
+  // change `item.cutout`, not the id set or the settings, so without this
+  // key the sweep would never notice a new (or restored) cut-out. (cutOut
+  // and restoreBackground also call scheduleSweep directly — see above —
+  // this key is what keeps the effect itself consistent with that state.)
+  const cutoutKey = state.items.map((i) => (i.cutout ? `${i.id}+` : `${i.id}-`)).join(",");
   useEffect(() => {
     if (state.items.length === 0) return;
-    window.clearTimeout(debounceRef.current);
-    debounceRef.current = window.setTimeout(runAll, 200);
+    scheduleSweep();
     return () => window.clearTimeout(debounceRef.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     itemIdsKey,
+    cutoutKey,
     state.settings.quality,
     state.settings.resize,
     state.settings.format,
     state.settings.icon,
-    runAll,
+    scheduleSweep,
   ]);
 
   const totals = useMemo(() => {
@@ -309,6 +333,7 @@ export function useQueue() {
     // land on ids the reducer has already dropped. The reducer ignores them
     // either way, but the workers stop wasting cycles on a cleared queue.
     clientRef.current?.bumpGeneration();
+    matteRef.current?.bumpGeneration();
     for (const item of itemsRef.current) releaseUrl(item.previewUrl);
     dispatch({ type: "reset" });
   }, []);
@@ -318,7 +343,61 @@ export function useQueue() {
     dispatch({ type: "remove", id: item.id });
   }, []);
 
-  return { ...state, totals, pending, dispatch, downloadOne, downloadAll, removeItem, reset };
+  // Background removal is per row and explicit: it costs seconds and a
+  // model download, so it never happens because a setting moved.
+  const cutOut = useCallback((item: QueueItem) => {
+    const matte = matteRef.current;
+    if (!matte) return;
+
+    dispatch({ type: "matte-start", id: item.id });
+    matte
+      .matte(item.id, item.file)
+      .then((cutout) => {
+        // Patch itemsRef directly, in addition to dispatching. This
+        // dispatch fires from a Promise callback, not a React event
+        // handler, so React is free to delay committing it (and running
+        // the effect above) past a macrotask boundary the fake-timer
+        // debounce below has no way to wait for. runAll reads itemsRef,
+        // not state, so mirroring the reducer's own update here is what
+        // keeps the very next sweep from encoding the stale, pre-cutout
+        // file. The dispatch still lands and produces the identical
+        // shape, so this is redundant, not a second source of truth.
+        itemsRef.current = itemsRef.current.map((i) =>
+          i.id === item.id ? { ...i, matting: false, cutout, status: "queued", error: undefined } : i,
+        );
+        dispatch({ type: "matte-done", id: item.id, cutout });
+        scheduleSweep();
+      })
+      .catch((error) => {
+        if (error instanceof StaleResult) return; // superseded, not a failure
+        dispatch({ type: "matte-error", id: item.id, message: error.message });
+      });
+  }, [scheduleSweep]);
+
+  const restoreBackground = useCallback(
+    (item: QueueItem) => {
+      // See cutOut's comment on itemsRef above — same reasoning applies.
+      itemsRef.current = itemsRef.current.map((i) =>
+        i.id === item.id ? { ...i, cutout: undefined, matting: false, status: "queued", error: undefined } : i,
+      );
+      dispatch({ type: "matte-clear", id: item.id });
+      scheduleSweep();
+    },
+    [scheduleSweep],
+  );
+
+  return {
+    ...state,
+    totals,
+    pending,
+    dispatch,
+    downloadOne,
+    downloadAll,
+    removeItem,
+    reset,
+    cutOut,
+    restoreBackground,
+  };
 }
 
 function save(blob: Blob, filename: string) {

@@ -119,7 +119,7 @@ export class EncodeClient {
 
   async encode(
     id: string,
-    file: File,
+    file: Blob,
     source: SourceInfo,
     settings: EncodeSettings,
     needsAlpha = false,

@@ -81,7 +81,7 @@ async function encodeIco(
 
 /** decode -> resize -> encode, in ONE pass. */
 export async function encodeOne(
-  file: File,
+  file: Blob,
   source: SourceInfo,
   settings: EncodeSettings,
   needsAlpha = false,

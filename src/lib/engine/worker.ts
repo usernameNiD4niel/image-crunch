@@ -6,7 +6,7 @@ export interface EncodeRequest {
   type: "encode";
   id: string;
   generation: number;
-  file: File;
+  file: Blob;
   source: SourceInfo;
   settings: EncodeSettings;
   needsAlpha?: boolean;
