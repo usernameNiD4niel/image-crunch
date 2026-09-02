@@ -2,11 +2,12 @@ import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { Field, FieldLabel, FieldContent } from "@/components/ui/field";
 import { ButtonGroup } from "@/components/ui/button-group";
 import { Slider } from "@/components/ui/slider";
-import type { EncodeSettings, IconSize, OutputFormat, ResizePreset } from "@/lib/engine/types";
+import type { EncodeSettings, IconSize, Mode, OutputFormat, ResizePreset } from "@/lib/engine/types";
 import { ICON_SIZES } from "@/lib/engine/plan";
 
 interface ControlsProps {
   settings: EncodeSettings;
+  mode: Mode;
   onChange: (patch: Partial<EncodeSettings>) => void;
   onDownloadAll: () => void;
   onReset: () => void;
@@ -186,7 +187,7 @@ function ResetButton({ onReset }: { onReset: () => void }) {
   );
 }
 
-export function Controls({ settings, onChange, onDownloadAll, onReset, disabled }: ControlsProps) {
+export function Controls({ settings, mode, onChange, onDownloadAll, onReset, disabled }: ControlsProps) {
   // An .ico carries lossless PNGs at fixed square sizes: the quality slider
   // has nothing to act on and the resize presets are overridden by the icon
   // bundle. Both stay on screen — the settings still exist, and the user is
@@ -195,73 +196,91 @@ export function Controls({ settings, onChange, onDownloadAll, onReset, disabled 
   // not in play.
   const ico = settings.format === "image/x-icon";
 
+  // Cut-out mode runs under fixed settings — lossless PNG at full size (see
+  // effectiveSettings) — so Quality, Resize, Icon and Format are not merely
+  // inert here, they are not in play at all. ICO greys its ignored controls
+  // because one click brings them back; this is a different job, and a control
+  // that cannot affect the output has no business being on screen for it.
+  // Reset and ↓ All stay: both still mean exactly what they say.
+  const cutout = mode === "cutout";
+
   return (
     <div className="sticky bottom-0 z-40 border-t border-ink bg-paper py-4">
       <div className="grid grid-cols-1 gap-6 md:grid-cols-12 md:items-center">
-        <Field className={ico ? "md:col-span-2 opacity-[0.38]" : "md:col-span-4"}>
-          <FieldLabel className="label text-ink-72">
-            Quality <span className="data text-ink">{ico ? "—" : settings.quality}</span>
-          </FieldLabel>
-          <FieldContent>
-            <Slider
-              // FieldLabel above is decorative here (no htmlFor) because the
-              // interactive element Base UI actually renders is a nested
-              // <input> inside Slider.Thumb, not something the Root's id can
-              // reach — getAriaLabel forwards the accessible name directly to
-              // that input (see the comment on Slider in ui/slider.tsx).
-              getAriaLabel={() => "Quality"}
-              min={10}
-              max={100}
-              step={5}
-              value={settings.quality}
-              disabled={ico}
-              onValueChange={(value) => {
-                // Base UI's Slider.onValueChange signature is
-                // (value: number | readonly number[], eventDetails) => void —
-                // not Radix's (value: number[]) => void. The wrapper in
-                // ui/slider.tsx doesn't pin the Value generic, so TS still
-                // sees the union here even though this is a single-thumb
-                // slider; narrow with Array.isArray rather than casting.
-                onChange({ quality: Array.isArray(value) ? value[0] : value });
-              }}
-              className="mt-3"
-            />
-          </FieldContent>
-        </Field>
-
-        {/* Resize stays on screen under ICO but inert: the preset is still
-            the user's, and it comes back the moment they leave ICO — it is
-            simply not what decides an icon's size. Icon appears beside it,
-            taking the width Quality and Resize give up. */}
-        <SegmentedField
-          id="resize"
-          label="Resize"
-          options={RESIZES}
-          value={settings.resize}
-          onSelect={(resize) => onChange({ resize })}
-          disabled={ico}
-          className={ico ? "md:col-span-2" : "md:col-span-3"}
-        />
-
-        {ico && (
-          <SegmentedField
-            id="icon"
-            label="Icon"
-            options={ICONS}
-            value={settings.icon}
-            onSelect={(icon) => onChange({ icon })}
-            className="md:col-span-3"
-          />
+        {cutout && (
+          <p className="data text-[0.8125rem] text-ink-72 md:col-span-10">
+            Removing backgrounds — output is lossless PNG at full size.
+          </p>
         )}
 
-        <SegmentedField
-          id="format"
-          label="Format"
-          options={FORMATS}
-          value={settings.format}
-          onSelect={(format) => onChange({ format })}
-          className="md:col-span-3"
-        />
+        {!cutout && (
+          <>
+            <Field className={ico ? "md:col-span-2 opacity-[0.38]" : "md:col-span-4"}>
+              <FieldLabel className="label text-ink-72">
+                Quality <span className="data text-ink">{ico ? "—" : settings.quality}</span>
+              </FieldLabel>
+              <FieldContent>
+                <Slider
+                  // FieldLabel above is decorative here (no htmlFor) because the
+                  // interactive element Base UI actually renders is a nested
+                  // <input> inside Slider.Thumb, not something the Root's id can
+                  // reach — getAriaLabel forwards the accessible name directly to
+                  // that input (see the comment on Slider in ui/slider.tsx).
+                  getAriaLabel={() => "Quality"}
+                  min={10}
+                  max={100}
+                  step={5}
+                  value={settings.quality}
+                  disabled={ico}
+                  onValueChange={(value) => {
+                    // Base UI's Slider.onValueChange signature is
+                    // (value: number | readonly number[], eventDetails) => void —
+                    // not Radix's (value: number[]) => void. The wrapper in
+                    // ui/slider.tsx doesn't pin the Value generic, so TS still
+                    // sees the union here even though this is a single-thumb
+                    // slider; narrow with Array.isArray rather than casting.
+                    onChange({ quality: Array.isArray(value) ? value[0] : value });
+                  }}
+                  className="mt-3"
+                />
+              </FieldContent>
+            </Field>
+
+            {/* Resize stays on screen under ICO but inert: the preset is still
+                the user's, and it comes back the moment they leave ICO — it is
+                simply not what decides an icon's size. Icon appears beside it,
+                taking the width Quality and Resize give up. */}
+            <SegmentedField
+              id="resize"
+              label="Resize"
+              options={RESIZES}
+              value={settings.resize}
+              onSelect={(resize) => onChange({ resize })}
+              disabled={ico}
+              className={ico ? "md:col-span-2" : "md:col-span-3"}
+            />
+
+            {ico && (
+              <SegmentedField
+                id="icon"
+                label="Icon"
+                options={ICONS}
+                value={settings.icon}
+                onSelect={(icon) => onChange({ icon })}
+                className="md:col-span-3"
+              />
+            )}
+
+            <SegmentedField
+              id="format"
+              label="Format"
+              options={FORMATS}
+              value={settings.format}
+              onSelect={(format) => onChange({ format })}
+              className="md:col-span-3"
+            />
+          </>
+        )}
 
         <div className="flex items-center gap-3 md:col-span-2 md:justify-self-end">
           <ResetButton onReset={onReset} />

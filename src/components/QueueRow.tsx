@@ -1,4 +1,4 @@
-import type { QueueItem } from "@/lib/engine/types";
+import type { Mode, QueueItem } from "@/lib/engine/types";
 import { currentResult, formatBytes, formatPercent, isPassthrough, savingsPercent } from "@/lib/engine/plan";
 import { Item, ItemActions } from "@/components/ui/item";
 import { Spinner } from "@/components/ui/spinner";
@@ -11,8 +11,7 @@ interface QueueRowProps {
   onToggle: () => void;
   onDownload: () => void;
   onRemove: () => void;
-  onCutOut: () => void;
-  onRestore: () => void;
+  mode: Mode;
   /** True when the queue's format is JPG and this row had to go elsewhere. */
   formatSubstituted?: boolean;
 }
@@ -24,8 +23,7 @@ export function QueueRow({
   onToggle,
   onDownload,
   onRemove,
-  onCutOut,
-  onRestore,
+  mode,
   formatSubstituted,
 }: QueueRowProps) {
   // Not item.result: while a re-encode is in flight the row still holds the
@@ -94,26 +92,6 @@ export function QueueRow({
         >
           {expanded ? "⌃" : "⌄"}
         </button>
-        {/* Passthrough files (svg, ico) are never decoded, so a cut-out on
-            one would mean nothing — and encodeOne's passthrough branch
-            re-labels its output bytes with the source mime, so the file
-            handed out would silently be the wrong format under the source
-            extension. */}
-        {!isPassthrough(item.source.type) && (
-          <button
-            type="button"
-            onClick={item.cutout ? onRestore : onCutOut}
-            disabled={item.matting}
-            aria-label={
-              item.cutout
-                ? `Restore background from ${item.source.name}`
-                : `Cut out background from ${item.source.name}`
-            }
-            className="focus-visible:ring-0 disabled:text-ink-58"
-          >
-            ✂
-          </button>
-        )}
         <button
           type="button"
           onClick={onDownload}
@@ -133,8 +111,16 @@ export function QueueRow({
         </button>
       </ItemActions>
 
+      {/* Passthrough files (svg, ico) are never decoded, so there is nothing
+          for the matte to run on. In cut-out mode the row says so outright:
+          left saying only "no gain", it would read as a row the mode had
+          quietly skipped. */}
       {item.status === "passthrough" && (
-        <p className="data col-span-11 col-start-2 text-[0.8125rem] text-ink-58">passthrough — no gain</p>
+        <p className="data col-span-11 col-start-2 text-[0.8125rem] text-ink-58">
+          {isPassthrough(item.source.type) && mode === "cutout"
+            ? "passthrough — cannot be cut out"
+            : "passthrough — no gain"}
+        </p>
       )}
 
       {item.status === "kept" && (

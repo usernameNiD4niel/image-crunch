@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
-import type { EncodeOutcome, EncodeResult, EncodeSettings, ItemStatus, QueueItem } from "@/lib/engine/types";
-import { currentResult, MAX_QUEUE, outputFilename, savingsPercent } from "@/lib/engine/plan";
+import type { EncodeOutcome, EncodeResult, EncodeSettings, ItemStatus, Mode, QueueItem } from "@/lib/engine/types";
+import { currentResult, effectiveSettings, isPassthrough, MAX_QUEUE, outputFilename, savingsPercent } from "@/lib/engine/plan";
 import { EncodeClient, releaseAll, releaseUrl, StaleResult } from "@/lib/engine/client";
 import { MatteClient } from "@/lib/engine/matte/client";
 import { bundleZip } from "@/lib/engine/zip";
@@ -13,6 +13,10 @@ export interface Notice {
 export interface QueueState {
   items: QueueItem[];
   settings: EncodeSettings;
+  // The job on screen. Kept beside `settings` rather than inside them: an
+  // EncodeSettings is what the encoder is handed, and the mode is a page-level
+  // choice that DECIDES those (see effectiveSettings) rather than being one.
+  mode: Mode;
   // A list, not a single string: a drop's screening report, its per-file read
   // failures and the queue-cap rejection can all be raised within a tick of
   // each other, and two drops in quick succession raise two independent
@@ -34,6 +38,7 @@ export const initialQueueState: QueueState = {
   // advice. KEEP remains one click away for anyone who needs the format
   // preserved.
   settings: { quality: 85, resize: "none", format: "image/webp", icon: 64 },
+  mode: "compress",
   notices: [],
   nextNoticeId: 1,
 };
@@ -64,6 +69,7 @@ export type QueueAction =
   | { type: "error"; id: string; message: string }
   | { type: "reset" }
   | { type: "settings"; settings: Partial<EncodeSettings> }
+  | { type: "set-mode"; mode: Mode }
   | { type: "notice"; message: string }
   | { type: "dismiss-notice"; id: number }
   | { type: "clear-notices" }
@@ -136,6 +142,32 @@ export function queueReducer(state: QueueState, action: QueueAction): QueueState
         items: state.items.map((i) =>
           i.status === "queued" ? i : { ...i, status: "queued", error: undefined },
         ),
+      };
+    }
+    case "set-mode": {
+      // Same no-op guard as "settings", for the same reason: re-selecting the
+      // mode already on screen must not requeue a settled queue.
+      if (state.mode === action.mode) return state;
+
+      // Leaving cut-out mode drops every cut-out. The modes are exclusive —
+      // compress mode's claim is that it only re-encodes what it was given,
+      // and a surviving matte would quietly break that on every row that had
+      // been through the other mode. Entering cut-out mode keeps the ones it
+      // finds: they are exactly what that mode was about to produce anyway.
+      const restoring = action.mode === "compress";
+      return {
+        ...state,
+        mode: action.mode,
+        // Superseded here rather than by the sweep, for the reason spelled out
+        // in "settings" above: until the re-encode lands, every figure on the
+        // rows describes a mode that is no longer on screen.
+        items: state.items.map((i) => ({
+          ...i,
+          status: "queued",
+          error: undefined,
+          cutout: restoring ? undefined : i.cutout,
+          matting: restoring ? false : i.matting,
+        })),
       };
     }
     case "notice":
@@ -211,8 +243,13 @@ export function useQueue() {
   // completing an encode never itself triggers another sweep.
   const itemsRef = useRef(state.items);
   const settingsRef = useRef(state.settings);
+  // Mode is a ref of its own rather than being folded into settingsRef during
+  // render, because setMode has to be able to move it BEFORE React commits —
+  // see the comment there.
+  const modeRef = useRef(state.mode);
   itemsRef.current = state.items;
   settingsRef.current = state.settings;
+  modeRef.current = state.mode;
 
   const runAll = useCallback(() => {
     const client = clientRef.current;
@@ -222,7 +259,16 @@ export function useQueue() {
     for (const item of itemsRef.current) {
       dispatch({ type: "working", id: item.id });
       client
-        .encode(item.id, item.cutout?.blob ?? item.file, item.source, settingsRef.current, !!item.cutout)
+        // The settings the ENGINE runs under, not the ones on the controls:
+        // in cut-out mode those differ, and a matte must never be encoded
+        // under the lossy format the user picked for the other job.
+        .encode(
+          item.id,
+          item.cutout?.blob ?? item.file,
+          item.source,
+          effectiveSettings(settingsRef.current, modeRef.current),
+          !!item.cutout,
+        )
         .then((result) => dispatch({ type: "result", id: item.id, result }))
         .catch((error) => {
           if (error instanceof StaleResult) return; // superseded, not a failure
@@ -272,6 +318,7 @@ export function useQueue() {
     state.settings.resize,
     state.settings.format,
     state.settings.icon,
+    state.mode,
     scheduleSweep,
   ]);
 
@@ -380,6 +427,48 @@ export function useQueue() {
       });
   }, [scheduleSweep]);
 
+  // Rows whose matte has already been asked for. Without this, the effect
+  // below would re-fire on every render the sweep causes and queue a second
+  // inference for a row that is already mid-matte — seconds of GPU time each,
+  // and a queue that never settles. Cleared when cut-out mode is left, so
+  // switching back on genuinely re-cuts.
+  const requestedRef = useRef(new Set<string>());
+
+  const setMode = useCallback(
+    (mode: Mode) => {
+      // Both refs are moved here, ahead of the dispatch, for the reason cutOut
+      // spells out at length: runAll reads refs, not state, and the 200ms
+      // debounce can elapse before React has committed this update. Without
+      // the mirror the very next sweep encodes under the mode the user just
+      // left — a matte written as a lossy JPEG, or an original still encoded
+      // from a cut-out that is no longer meant to exist.
+      modeRef.current = mode;
+      if (mode === "compress") {
+        requestedRef.current.clear();
+        itemsRef.current = itemsRef.current.map((i) => ({ ...i, cutout: undefined }));
+      }
+      dispatch({ type: "set-mode", mode });
+      scheduleSweep();
+    },
+    [scheduleSweep],
+  );
+
+  // Cut-out mode is a standing instruction, not a one-off press: it applies to
+  // the rows already queued when it is switched on AND to every file dropped
+  // afterwards, which is why this is an effect over the items rather than
+  // something setMode does once. Passthrough sources are skipped — an SVG is
+  // never decoded, so there is nothing to matte.
+  useEffect(() => {
+    if (state.mode !== "cutout") return;
+    for (const item of state.items) {
+      if (requestedRef.current.has(item.id)) continue;
+      if (isPassthrough(item.source.type)) continue;
+      if (item.cutout || item.matting) continue;
+      requestedRef.current.add(item.id);
+      cutOut(item);
+    }
+  }, [state.mode, state.items, cutOut]);
+
   const restoreBackground = useCallback(
     (item: QueueItem) => {
       // See cutOut's comment on itemsRef above — same reasoning applies,
@@ -402,6 +491,7 @@ export function useQueue() {
     reset,
     cutOut,
     restoreBackground,
+    setMode,
   };
 }
 

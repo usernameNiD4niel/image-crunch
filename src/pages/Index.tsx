@@ -4,17 +4,19 @@ import { Statement } from "@/components/Statement";
 import { DropZone, getImageDimensions } from "@/components/DropZone";
 import { Queue } from "@/components/Queue";
 import { Controls } from "@/components/Controls";
+import { ModeSwitch } from "@/components/ModeSwitch";
 import { Editorial } from "@/components/Editorial";
 import { Notices } from "@/components/Notices";
 import { useQueue } from "@/hooks/useQueue";
 import { trackUrl } from "@/lib/engine/client";
 import { pickDevice, isModelPresent } from "@/lib/engine/matte/assets";
-import type { QueueItem } from "@/lib/engine/types";
+import type { Mode, QueueItem } from "@/lib/engine/types";
 
 const Index = () => {
   const {
     items,
     settings,
+    mode,
     totals,
     notices,
     pending,
@@ -23,8 +25,7 @@ const Index = () => {
     downloadAll,
     removeItem,
     reset,
-    cutOut,
-    restoreBackground,
+    setMode,
   } = useQueue();
   // Whether the one-off "this will download N MB" notice has been shown.
   // Set ONLY once the model has actually been found: if the check said the
@@ -82,15 +83,25 @@ const Index = () => {
     [dispatch],
   );
 
-  const onCutOut = useCallback(
-    async (item: QueueItem) => {
+  // The model gate lives on the mode switch, not on the rows: entering
+  // cut-out mode is the moment the download happens and the moment the
+  // compression controls go away, so it is the moment to refuse if the
+  // weights were never deployed. Leaving the mode is never gated — going back
+  // to compressing needs no model at all.
+  const onModeChange = useCallback(
+    async (next: Mode) => {
+      if (next === "compress") {
+        setMode(next);
+        return;
+      }
+
       if (!downloadAnnounced) {
         const device = pickDevice();
-        // Re-checked on every press until it succeeds, in both directions:
+        // Re-checked on every switch until it succeeds, in both directions:
         // a deployment without weights must keep saying so rather than
-        // silently handing the second press to a worker that fails with a
-        // raw protobuf error, and a model deployed mid-session must still
-        // get its download notice.
+        // silently handing the queue to a worker that fails with a raw
+        // protobuf error, and a model deployed mid-session must still get
+        // its download notice.
         if (!(await isModelPresent(device))) {
           dispatch({
             type: "notice",
@@ -108,9 +119,9 @@ const Index = () => {
               : "This browser has no WebGPU, so background removal uses the slower fallback: about 43 MB to download, and a few seconds per image.",
         });
       }
-      cutOut(item);
+      setMode(next);
     },
-    [cutOut, dispatch, downloadAnnounced],
+    [dispatch, downloadAnnounced, setMode],
   );
 
   return (
@@ -130,6 +141,8 @@ const Index = () => {
       <main id="tool" className="mx-auto max-w-[1440px] scroll-mt-12 border-t border-rule px-6 py-16">
         <Notices notices={notices} onDismiss={(id) => dispatch({ type: "dismiss-notice", id })} />
 
+        <ModeSwitch mode={mode} onChange={onModeChange} />
+
         {items.length === 0 ? (
           <DropZone onFiles={onFiles} />
         ) : (
@@ -140,13 +153,13 @@ const Index = () => {
               totals={totals}
               onDownloadOne={downloadOne}
               onRemove={removeItem}
-              onCutOut={onCutOut}
-              onRestore={restoreBackground}
+              mode={mode}
               format={settings.format}
             />
             <DropZone onFiles={onFiles} compact />
             <Controls
               settings={settings}
+              mode={mode}
               onChange={(patch) => dispatch({ type: "settings", settings: patch })}
               onDownloadAll={downloadAll}
               onReset={reset}

@@ -765,3 +765,215 @@ describe("useQueue cut-outs", () => {
     expect(encodeMock).not.toHaveBeenCalled();
   });
 });
+
+describe("queueReducer mode", () => {
+  it("starts in compress mode", () => {
+    expect(initialQueueState.mode).toBe("compress");
+  });
+
+  it("switches to cut-out mode", () => {
+    const state = queueReducer(initialQueueState, { type: "set-mode", mode: "cutout" });
+    expect(state.mode).toBe("cutout");
+  });
+
+  it("ignores a switch to the mode already on screen", () => {
+    // Same reasoning as the settings no-op: re-selecting the current mode
+    // must not strip every row's figures and start a sweep nobody asked for.
+    const added = queueReducer(initialQueueState, { type: "add", items: [item("a")] });
+    const done = queueReducer(added, {
+      type: "result",
+      id: "a",
+      result: { blob: new Blob(), size: 250, width: 100, height: 100, mime: "image/png", outcome: "encoded" },
+    });
+    expect(queueReducer(done, { type: "set-mode", mode: "compress" })).toBe(done);
+  });
+
+  it("supersedes every settled row, because the effective settings changed", () => {
+    const added = queueReducer(initialQueueState, { type: "add", items: [item("a")] });
+    const done = queueReducer(added, {
+      type: "result",
+      id: "a",
+      result: { blob: new Blob(), size: 250, width: 100, height: 100, mime: "image/png", outcome: "encoded" },
+    });
+    const state = queueReducer(done, { type: "set-mode", mode: "cutout" });
+    expect(state.items[0].status).toBe("queued");
+  });
+
+  it("drops every cut-out on the way back to compress", () => {
+    // Leaving cut-out mode is the only restore there is now that the row's
+    // scissors button is gone: if the cut-outs survived, compress mode would
+    // go on shipping transparent PNGs from a mode whose whole claim is that
+    // it leaves the picture alone.
+    const added = queueReducer({ ...initialQueueState, mode: "cutout" }, { type: "add", items: [item("a")] });
+    const cut = queueReducer(added, {
+      type: "matte-done",
+      id: "a",
+      cutout: { blob: new Blob(), width: 100, height: 100 },
+    });
+    expect(cut.items[0].cutout).toBeDefined();
+
+    const state = queueReducer(cut, { type: "set-mode", mode: "compress" });
+    expect(state.items[0].cutout).toBeUndefined();
+  });
+
+  it("keeps the cut-outs it already has when entering cut-out mode", () => {
+    const added = queueReducer(initialQueueState, { type: "add", items: [item("a")] });
+    const cut = queueReducer(added, {
+      type: "matte-done",
+      id: "a",
+      cutout: { blob: new Blob(), width: 100, height: 100 },
+    });
+    const state = queueReducer(cut, { type: "set-mode", mode: "cutout" });
+    expect(state.items[0].cutout).toBeDefined();
+  });
+});
+
+describe("useQueue mode switching", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.clearAllMocks();
+    cleanup();
+  });
+
+  function svgItem(id: string): QueueItem {
+    return {
+      id,
+      file: new File([], `${id}.svg`, { type: "image/svg+xml" }),
+      source: { name: `${id}.svg`, type: "image/svg+xml", size: 500, width: 10, height: 10 },
+      previewUrl: `blob:${id}`,
+      status: "queued",
+    };
+  }
+
+  async function settled(items: QueueItem[]) {
+    vi.useFakeTimers();
+    encodeMock.mockImplementation(async () => ({
+      blob: new Blob(["x"]),
+      size: 10,
+      width: 1,
+      height: 1,
+      mime: "image/png",
+      outcome: "encoded" as const,
+    }));
+    const hook = renderHook(() => useQueue());
+    act(() => {
+      hook.result.current.dispatch({ type: "add", items });
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(300);
+    });
+    return hook;
+  }
+
+  it("cuts out every queued row when cut-out mode is switched on", async () => {
+    const hook = await settled([item("a"), item("b")]);
+    matteMock.mockClear();
+
+    await act(async () => {
+      hook.result.current.setMode("cutout");
+      await vi.advanceTimersByTimeAsync(300);
+    });
+
+    expect(matteMock).toHaveBeenCalledTimes(2);
+    expect(hook.result.current.items.every((i) => i.cutout !== undefined)).toBe(true);
+  });
+
+  it("cuts out a file dropped while already in cut-out mode", async () => {
+    const hook = await settled([item("a")]);
+    await act(async () => {
+      hook.result.current.setMode("cutout");
+      await vi.advanceTimersByTimeAsync(300);
+    });
+    matteMock.mockClear();
+
+    await act(async () => {
+      hook.result.current.dispatch({ type: "add", items: [item("b")] });
+      await vi.advanceTimersByTimeAsync(300);
+    });
+
+    expect(matteMock).toHaveBeenCalledTimes(1);
+    expect(hook.result.current.items[1].cutout).toBeDefined();
+  });
+
+  it("never asks for the same row's matte twice", async () => {
+    // The sweep re-renders the hook on every encode result, and inference
+    // costs seconds of GPU time — a matte request that re-fires on render
+    // would be invisible except as a queue that never settles.
+    const hook = await settled([item("a")]);
+    matteMock.mockClear();
+
+    await act(async () => {
+      hook.result.current.setMode("cutout");
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+
+    expect(matteMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not try to matte a file the engine never decodes", async () => {
+    const hook = await settled([svgItem("v")]);
+    matteMock.mockClear();
+
+    await act(async () => {
+      hook.result.current.setMode("cutout");
+      await vi.advanceTimersByTimeAsync(300);
+    });
+
+    expect(matteMock).not.toHaveBeenCalled();
+  });
+
+  it("encodes as lossless PNG in cut-out mode, whatever the controls say", async () => {
+    const hook = await settled([item("a")]);
+    act(() => {
+      hook.result.current.dispatch({ type: "settings", settings: { format: "image/jpeg", quality: 40, resize: 1280 } });
+    });
+    encodeMock.mockClear();
+
+    await act(async () => {
+      hook.result.current.setMode("cutout");
+      await vi.advanceTimersByTimeAsync(300);
+    });
+
+    const settings = (encodeMock.mock.calls.at(-1) as unknown[])[3];
+    expect(settings).toMatchObject({ format: "image/png", quality: 100, resize: "none" });
+  });
+
+  it("goes back to encoding the original file when cut-out mode is switched off", async () => {
+    const hook = await settled([item("a")]);
+    await act(async () => {
+      hook.result.current.setMode("cutout");
+      await vi.advanceTimersByTimeAsync(300);
+    });
+    encodeMock.mockClear();
+
+    await act(async () => {
+      hook.result.current.setMode("compress");
+      await vi.advanceTimersByTimeAsync(300);
+    });
+
+    expect(hook.result.current.items[0].cutout).toBeUndefined();
+    const [, encodedFrom] = encodeMock.mock.calls.at(-1) as unknown[];
+    expect(encodedFrom).toBe(hook.result.current.items[0].file);
+  });
+
+  it("cuts out again if cut-out mode is switched back on", async () => {
+    const hook = await settled([item("a")]);
+    for (const mode of ["cutout", "compress"] as const) {
+      await act(async () => {
+        hook.result.current.setMode(mode);
+        await vi.advanceTimersByTimeAsync(300);
+      });
+    }
+    matteMock.mockClear();
+
+    await act(async () => {
+      hook.result.current.setMode("cutout");
+      await vi.advanceTimersByTimeAsync(300);
+    });
+
+    expect(matteMock).toHaveBeenCalledTimes(1);
+  });
+});

@@ -32,8 +32,7 @@ describe("QueueRow", () => {
         onToggle={noop}
         onDownload={noop}
         onRemove={noop}
-        onCutOut={noop}
-        onRestore={noop}
+        mode="compress"
       />,
     );
 
@@ -55,8 +54,7 @@ describe("QueueRow", () => {
         onToggle={noop}
         onDownload={noop}
         onRemove={noop}
-        onCutOut={noop}
-        onRestore={noop}
+        mode="compress"
       />,
     );
 
@@ -81,8 +79,7 @@ describe("QueueRow", () => {
         onToggle={noop}
         onDownload={noop}
         onRemove={noop}
-        onCutOut={noop}
-        onRestore={noop}
+        mode="compress"
       />,
     );
 
@@ -99,8 +96,7 @@ describe("QueueRow", () => {
         onToggle={noop}
         onDownload={noop}
         onRemove={noop}
-        onCutOut={noop}
-        onRestore={noop}
+        mode="compress"
       />,
     );
 
@@ -120,8 +116,7 @@ describe("QueueRow", () => {
         onToggle={noop}
         onDownload={noop}
         onRemove={noop}
-        onCutOut={noop}
-        onRestore={noop}
+        mode="compress"
       />,
     );
 
@@ -150,8 +145,7 @@ describe("QueueRow", () => {
         onToggle={noop}
         onDownload={noop}
         onRemove={noop}
-        onCutOut={noop}
-        onRestore={noop}
+        mode="compress"
       />,
     );
 
@@ -170,8 +164,7 @@ describe("QueueRow", () => {
         onToggle={noop}
         onDownload={noop}
         onRemove={noop}
-        onCutOut={noop}
-        onRestore={noop}
+        mode="compress"
       />,
     );
 
@@ -191,8 +184,7 @@ describe("QueueRow", () => {
         onToggle={noop}
         onDownload={noop}
         onRemove={noop}
-        onCutOut={noop}
-        onRestore={noop}
+        mode="compress"
       />,
     );
     void container;
@@ -211,8 +203,7 @@ describe("QueueRow", () => {
         onToggle={noop}
         onDownload={noop}
         onRemove={noop}
-        onCutOut={noop}
-        onRestore={noop}
+        mode="compress"
       />,
     );
 
@@ -231,8 +222,7 @@ describe("QueueRow", () => {
         onToggle={noop}
         onDownload={noop}
         onRemove={noop}
-        onCutOut={noop}
-        onRestore={noop}
+        mode="compress"
       />,
     );
 
@@ -251,8 +241,7 @@ describe("QueueRow", () => {
         onToggle={noop}
         onDownload={noop}
         onRemove={noop}
-        onCutOut={noop}
-        onRestore={noop}
+        mode="compress"
       />,
     );
 
@@ -264,8 +253,10 @@ describe("QueueRow", () => {
 });
 
 describe("QueueRow background removal", () => {
-  it("offers to cut out the background, naming the file", () => {
-    const onCutOut = vi.fn();
+  it("carries no per-row cut-out control — the mode switch decides", () => {
+    // Background removal is a mode, not a row action: a row-level scissors
+    // would let the queue hold a mixture of cut-out and untouched files under
+    // one heading that claims to describe all of them.
     render(
       <QueueRow
         index={0}
@@ -274,16 +265,14 @@ describe("QueueRow background removal", () => {
         onToggle={noop}
         onDownload={noop}
         onRemove={noop}
-        onCutOut={onCutOut}
-        onRestore={noop}
+        mode="compress"
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Cut out background from photo.png" }));
-    expect(onCutOut).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("button", { name: /background from photo\.png/ })).toBeNull();
   });
 
-  it("says what it is doing while the model runs, and disables the control", () => {
+  it("says what it is doing while the model runs", () => {
     render(
       <QueueRow
         index={0}
@@ -292,18 +281,14 @@ describe("QueueRow background removal", () => {
         onToggle={noop}
         onDownload={noop}
         onRemove={noop}
-        onCutOut={noop}
-        onRestore={noop}
+        mode="compress"
       />,
     );
 
     expect(screen.getByText(/removing background/i)).toBeTruthy();
-    const button = screen.getByRole("button", { name: /background from photo\.png/ }) as HTMLButtonElement;
-    expect(button.disabled).toBe(true);
   });
 
-  it("offers to restore once the row is cut out, and says so", () => {
-    const onRestore = vi.fn();
+  it("says so once the row is cut out", () => {
     render(
       <QueueRow
         index={0}
@@ -312,14 +297,11 @@ describe("QueueRow background removal", () => {
         onToggle={noop}
         onDownload={noop}
         onRemove={noop}
-        onCutOut={noop}
-        onRestore={onRestore}
+        mode="compress"
       />,
     );
 
     expect(screen.getByText(/^cut out/i)).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Restore background from photo.png" }));
-    expect(onRestore).toHaveBeenCalledTimes(1);
   });
 
   // JPG cannot hold transparency, so the row must say where its output
@@ -337,8 +319,7 @@ describe("QueueRow background removal", () => {
         onToggle={noop}
         onDownload={noop}
         onRemove={noop}
-        onCutOut={noop}
-        onRestore={noop}
+        mode="compress"
         formatSubstituted
       />,
     );
@@ -346,7 +327,10 @@ describe("QueueRow background removal", () => {
     expect(screen.getByText(/JPG has no transparency/i)).toBeTruthy();
   });
 
-  it("renders no cut-out control on a passthrough row", () => {
+  it("says a passthrough file cannot be cut out, while in cut-out mode", () => {
+    // An SVG is never decoded, so the matte has nothing to run on. In cut-out
+    // mode the row must say that outright: silence would read as a row the
+    // mode simply forgot.
     render(
       <QueueRow
         index={0}
@@ -359,28 +343,32 @@ describe("QueueRow background removal", () => {
         onToggle={noop}
         onDownload={noop}
         onRemove={noop}
-        onCutOut={noop}
-        onRestore={noop}
+        mode="cutout"
       />,
     );
 
-    expect(screen.queryByRole("button", { name: /background from/ })).toBeNull();
+    expect(screen.getByText(/cannot be cut out/i)).toBeTruthy();
   });
 
-  it("still offers the cut-out control on a raster row", () => {
+  it("says nothing of the sort about a passthrough file while compressing", () => {
     render(
       <QueueRow
         index={0}
-        item={baseItem({ status: "done" })}
+        item={baseItem({
+          status: "passthrough",
+          source: { name: "icon.svg", type: "image/svg+xml", size: 500, width: 32, height: 32 },
+          result: { blob: new Blob(), size: 500, width: 32, height: 32, mime: "image/svg+xml", outcome: "passthrough" },
+        })}
         expanded={false}
         onToggle={noop}
         onDownload={noop}
         onRemove={noop}
-        onCutOut={noop}
-        onRestore={noop}
+        mode="compress"
       />,
     );
 
-    expect(screen.getByRole("button", { name: /background from/ })).toBeTruthy();
+    expect(screen.queryByText(/cannot be cut out/i)).toBeNull();
+    expect(screen.getByText(/no gain/i)).toBeTruthy();
   });
+
 });

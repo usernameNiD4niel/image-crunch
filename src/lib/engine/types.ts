@@ -3,6 +3,13 @@ export type ResizePreset = "none" | 2048 | 1280;
 /** The largest image in an .ico bundle; the standard smaller sizes ride along. */
 export type IconSize = 16 | 32 | 48 | 64 | 128 | 256;
 
+/**
+ * The job the page is doing. The two are exclusive: compress re-encodes to
+ * the user's chosen format and quality, cut-out removes backgrounds and
+ * ignores those settings entirely (see effectiveSettings in plan.ts).
+ */
+export type Mode = "compress" | "cutout";
+
 export interface EncodeSettings {
   quality: number; // 10–100
   resize: ResizePreset;
