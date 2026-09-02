@@ -1,4 +1,4 @@
-import type { EncodeResult, IconSize, OutputFormat, QueueItem, ResizePreset } from "./types";
+import type { EncodeResult, EncodeSettings, IconSize, Mode, OutputFormat, QueueItem, ResizePreset } from "./types";
 
 export const MAX_FILE_BYTES = 35 * 1024 * 1024;
 export const MAX_QUEUE = 30;
@@ -165,4 +165,20 @@ export function currentResult(item: QueueItem): EncodeResult | undefined {
     return undefined;
   }
   return item.result;
+}
+
+/**
+ * The settings the engine actually runs under, given the mode on screen.
+ *
+ * Cut-out mode does not honour Quality, Resize or Format: its output exists
+ * to carry an alpha channel, and the three controls it ignores would all
+ * damage that. Lossy quality puts artefacts along the matte's edge, a resize
+ * discards detail nobody asked to lose, and every format but PNG and WebP
+ * has no transparency to write the matte into. PNG is the one a cut-out is
+ * expected to arrive as. `icon` rides through untouched — it is only ever
+ * consulted for "image/x-icon", which this can no longer be.
+ */
+export function effectiveSettings(settings: EncodeSettings, mode: Mode): EncodeSettings {
+  if (mode === "compress") return settings;
+  return { ...settings, quality: 100, resize: "none", format: "image/png" };
 }

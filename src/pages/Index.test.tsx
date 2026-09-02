@@ -4,6 +4,10 @@ import type { QueueItem } from "@/lib/engine/types";
 
 const isModelPresent = vi.fn(async () => true);
 const cutOut = vi.fn();
+const setMode = vi.fn();
+// The hook is mocked, so the page never re-renders into the new mode on its
+// own — tests that need to start in cut-out mode set this before rendering.
+let mockMode = "compress";
 const dispatch = vi.fn();
 
 vi.mock("@/lib/engine/matte/assets", () => ({
@@ -23,6 +27,7 @@ vi.mock("@/hooks/useQueue", () => ({
   useQueue: () => ({
     items: [item],
     settings: { quality: 85, resize: "none", format: "image/webp", icon: 64 },
+    mode: mockMode,
     totals: { count: 1, input: 1000, output: 500, percent: 50 },
     notices: [],
     pending: 0,
@@ -33,6 +38,7 @@ vi.mock("@/hooks/useQueue", () => ({
     reset: () => {},
     cutOut,
     restoreBackground: () => {},
+    setMode,
   }),
 }));
 
@@ -41,13 +47,19 @@ const { default: Index } = await import("./Index");
 beforeEach(() => {
   isModelPresent.mockReset();
   cutOut.mockReset();
+  setMode.mockReset();
+  mockMode = "compress";
   dispatch.mockReset();
 });
 
 afterEach(cleanup);
 
 function pressCutOut() {
-  fireEvent.click(screen.getByLabelText(/Cut out background/i));
+  fireEvent.click(screen.getByRole("radio", { name: /remove background/i }));
+}
+
+function pressCompress() {
+  fireEvent.click(screen.getByRole("radio", { name: /^compress/i }));
 }
 
 function noticeMessages(): string[] {
@@ -73,7 +85,19 @@ describe("Index cut-out gate", () => {
     await waitFor(() => expect(noticeMessages()).toHaveLength(2));
 
     expect(noticeMessages().every((m) => /was not deployed/.test(m))).toBe(true);
-    expect(cutOut).not.toHaveBeenCalled();
+  });
+
+  // Without the weights the mode must not change: cut-out mode with no model
+  // is a page that hides the compression controls, cuts nothing out, and
+  // explains itself only in a notice the user can dismiss.
+  it("refuses to enter cut-out mode when the model is missing", async () => {
+    isModelPresent.mockResolvedValue(false);
+    render(<Index />);
+
+    pressCutOut();
+    await waitFor(() => expect(noticeMessages()).toHaveLength(1));
+
+    expect(setMode).not.toHaveBeenCalled();
   });
 
   // The mirror image of the same flag: a model that appears mid-session
@@ -87,21 +111,32 @@ describe("Index cut-out gate", () => {
     pressCutOut();
     await waitFor(() => expect(noticeMessages()).toHaveLength(1));
     pressCutOut();
-    await waitFor(() => expect(cutOut).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(setMode).toHaveBeenCalledWith("cutout"));
 
     expect(noticeMessages()[1]).toMatch(/about 85 MB/);
   });
 
-  it("announces the download once, not on every press", async () => {
+  it("announces the download once, not on every switch", async () => {
     isModelPresent.mockResolvedValue(true);
     render(<Index />);
 
     pressCutOut();
-    await waitFor(() => expect(cutOut).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(setMode).toHaveBeenCalledTimes(1));
     pressCutOut();
-    await waitFor(() => expect(cutOut).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(setMode).toHaveBeenCalledTimes(2));
 
     expect(noticeMessages()).toHaveLength(1);
     expect(isModelPresent).toHaveBeenCalledTimes(1);
+  });
+
+  it("never checks for the model on the way back to compressing", async () => {
+    isModelPresent.mockResolvedValue(true);
+    mockMode = "cutout";
+    render(<Index />);
+
+    pressCompress();
+
+    await waitFor(() => expect(setMode).toHaveBeenCalledWith("compress"));
+    expect(isModelPresent).not.toHaveBeenCalled();
   });
 });

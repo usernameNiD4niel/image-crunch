@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { OutputFormat, QueueItem } from "@/lib/engine/types";
+import type { Mode, OutputFormat, QueueItem } from "@/lib/engine/types";
 import { formatBytes, formatPercent, resolveOutputFormat } from "@/lib/engine/plan";
 import { QueueRow } from "@/components/QueueRow";
 
@@ -10,8 +10,7 @@ interface QueueProps {
   totals: { count: number; input: number; output: number; percent: number };
   onDownloadOne: (item: QueueItem) => void;
   onRemove: (item: QueueItem) => void;
-  onCutOut: (item: QueueItem) => void;
-  onRestore: (item: QueueItem) => void;
+  mode: Mode;
   /**
    * The queue's format setting. Held rather than a precomputed boolean
    * because whether a cut-out forces a different output format is a
@@ -22,7 +21,7 @@ interface QueueProps {
   format: OutputFormat;
 }
 
-export function Queue({ items, pending, totals, onDownloadOne, onRemove, onCutOut, onRestore, format }: QueueProps) {
+export function Queue({ items, pending, totals, onDownloadOne, onRemove, mode, format }: QueueProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   return (
@@ -46,8 +45,7 @@ export function Queue({ items, pending, totals, onDownloadOne, onRemove, onCutOu
             onToggle={() => setExpandedId(expandedId === item.id ? null : item.id)}
             onDownload={() => onDownloadOne(item)}
             onRemove={() => onRemove(item)}
-            onCutOut={() => onCutOut(item)}
-            onRestore={() => onRestore(item)}
+            mode={mode}
             // Asked of the resolver, not of the raw setting: it is the
             // resolver that decides a cut-out cannot be a JPEG, and it
             // does so for FORMAT=KEEP on a .jpg source just as much as

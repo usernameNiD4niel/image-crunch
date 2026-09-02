@@ -31,8 +31,7 @@ describe("Queue total", () => {
         totals={zeroTotals}
         onDownloadOne={() => {}}
         onRemove={() => {}}
-        onCutOut={() => {}}
-        onRestore={() => {}}
+        mode="compress"
         format="image/webp"
       />,
     );
@@ -49,8 +48,7 @@ describe("Queue total", () => {
         totals={{ count: 1, input: 1000, output: 250, percent: 75 }}
         onDownloadOne={() => {}}
         onRemove={() => {}}
-        onCutOut={() => {}}
-        onRestore={() => {}}
+        mode="compress"
         format="image/webp"
       />,
     );
@@ -84,8 +82,7 @@ describe("Queue cut-out format footnote", () => {
         totals={zeroTotals}
         onDownloadOne={() => {}}
         onRemove={() => {}}
-        onCutOut={() => {}}
-        onRestore={() => {}}
+        mode="compress"
         format={format}
       />,
     );

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import type { EncodeResult, ItemStatus, QueueItem } from "./types";
+import type { EncodeResult, EncodeSettings, ItemStatus, QueueItem } from "./types";
 import {
   formatLabel,
   ICON_SIZES,
@@ -12,6 +12,7 @@ import {
   outputFilename,
   formatBytes,
   currentResult,
+  effectiveSettings,
 } from "./plan";
 
 describe("isPassthrough", () => {
@@ -273,5 +274,32 @@ describe("resolveOutputFormat for ICO", () => {
   it("leaves passthrough sources alone", () => {
     expect(resolveOutputFormat("image/svg+xml", "image/x-icon")).toBe("image/svg+xml");
     expect(resolveOutputFormat("image/x-icon", "image/x-icon")).toBe("image/x-icon");
+  });
+});
+
+describe("effectiveSettings", () => {
+  const chosen: EncodeSettings = { quality: 42, resize: 1280, format: "image/jpeg", icon: 32 };
+
+  it("hands back the user's own settings in compress mode", () => {
+    expect(effectiveSettings(chosen, "compress")).toEqual(chosen);
+  });
+
+  it("overrides quality, resize and format in cut-out mode", () => {
+    // Cut-out mode's job is the alpha channel, not the byte count: a lossy
+    // re-encode at 42% would put JPEG artefacts along the very edge the
+    // matte exists to make clean, and a resize would throw away detail the
+    // user never asked to lose.
+    expect(effectiveSettings(chosen, "cutout")).toEqual({
+      quality: 100,
+      resize: "none",
+      format: "image/png",
+      icon: 32,
+    });
+  });
+
+  it("does not mutate the settings it was given", () => {
+    const before = { ...chosen };
+    effectiveSettings(chosen, "cutout");
+    expect(chosen).toEqual(before);
   });
 });
