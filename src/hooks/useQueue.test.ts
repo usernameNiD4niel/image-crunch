@@ -174,6 +174,23 @@ vi.mock("@/lib/engine/client", () => ({
   StaleResult: MockStaleResult,
 }));
 
+const { matteMock, matteBumpGenerationMock, MockMatteClient } = vi.hoisted(() => {
+  const matteMock = vi.fn(async () => ({ blob: new Blob(["cut"]), width: 100, height: 100 }));
+  // Shared across instances, like encodeMock/MockEncodeClient above: useQueue
+  // constructs exactly one MatteClient per mount, and the test needs to
+  // assert on the SAME mock the hook actually calls — a fresh per-instance
+  // vi.fn() (the field-initializer default) would be unreachable from here.
+  const matteBumpGenerationMock = vi.fn();
+  class MockMatteClient {
+    matte = matteMock;
+    bumpGeneration = matteBumpGenerationMock;
+    dispose = vi.fn();
+  }
+  return { matteMock, matteBumpGenerationMock, MockMatteClient };
+});
+
+vi.mock("@/lib/engine/matte/client", () => ({ MatteClient: MockMatteClient }));
+
 describe("useQueue re-encode scheduling", () => {
   afterEach(() => {
     vi.useRealTimers();
@@ -319,6 +336,55 @@ describe("queueReducer settings changes", () => {
     const state = queueReducer(before, { type: "settings", settings: { quality: before.settings.quality } });
     expect(state.items[0].status).toBe("done");
     expect(state.items).toBe(before.items);
+  });
+});
+
+describe("queueReducer cut-outs", () => {
+  const cutout = { blob: new Blob(["cut"]), width: 100, height: 100 };
+
+  function queued() {
+    return queueReducer(initialQueueState, { type: "add", items: [item("a"), item("b")] });
+  }
+
+  it("marks only the requested row as matting", () => {
+    const state = queueReducer(queued(), { type: "matte-start", id: "a" });
+    expect(state.items[0].matting).toBe(true);
+    expect(state.items[1].matting).toBeFalsy();
+  });
+
+  it("stores the cut-out, clears the flag and returns the row to queued for re-encoding", () => {
+    const started = queueReducer(queued(), { type: "matte-start", id: "a" });
+    const state = queueReducer(started, { type: "matte-done", id: "a", cutout });
+
+    expect(state.items[0].cutout).toBe(cutout);
+    expect(state.items[0].matting).toBe(false);
+    expect(state.items[0].status).toBe("queued");
+  });
+
+  it("reports a failure on the row without leaving it stuck busy", () => {
+    const started = queueReducer(queued(), { type: "matte-start", id: "a" });
+    const state = queueReducer(started, { type: "matte-error", id: "a", message: "out of memory" });
+
+    expect(state.items[0].matting).toBe(false);
+    expect(state.items[0].status).toBe("error");
+    expect(state.items[0].error).toBe("out of memory");
+  });
+
+  // The action is reversible: restoring puts the original back and sends
+  // the row to be encoded again from it.
+  it("drops the cut-out and requeues the row on matte-clear", () => {
+    const started = queueReducer(queued(), { type: "matte-start", id: "a" });
+    const done = queueReducer(started, { type: "matte-done", id: "a", cutout });
+    const state = queueReducer(done, { type: "matte-clear", id: "a" });
+
+    expect(state.items[0].cutout).toBeUndefined();
+    expect(state.items[0].status).toBe("queued");
+  });
+
+  it("leaves other rows untouched throughout", () => {
+    const started = queueReducer(queued(), { type: "matte-start", id: "a" });
+    const done = queueReducer(started, { type: "matte-done", id: "a", cutout });
+    expect(done.items[1]).toEqual(queued().items[1]);
   });
 });
 
@@ -563,5 +629,139 @@ describe("useQueue while a re-encode is in flight", () => {
     });
     expect(bundleZipMock).toHaveBeenCalledTimes(1);
     hook.unmount();
+  });
+});
+
+describe("useQueue cut-outs", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.clearAllMocks();
+    cleanup();
+  });
+
+  async function settledQueue() {
+    vi.useFakeTimers();
+    encodeMock.mockImplementation(async () => ({
+      blob: new Blob(["x"]),
+      size: 10,
+      width: 1,
+      height: 1,
+      mime: "image/png",
+      outcome: "encoded" as const,
+    }));
+    const hook = renderHook(() => useQueue());
+    act(() => {
+      hook.result.current.dispatch({ type: "add", items: [item("a")] });
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(300);
+    });
+    return hook;
+  }
+
+  it("re-encodes the row from the cut-out, not from the original file", async () => {
+    const hook = await settledQueue();
+    encodeMock.mockClear();
+
+    await act(async () => {
+      hook.result.current.cutOut(hook.result.current.items[0]);
+      await vi.advanceTimersByTimeAsync(300);
+    });
+
+    expect(matteMock).toHaveBeenCalledTimes(1);
+    const [, encodedFrom] = encodeMock.mock.calls[0] as unknown[];
+    expect(encodedFrom).toBe(hook.result.current.items[0].cutout?.blob);
+  });
+
+  it("tells the encoder the output needs an alpha channel", async () => {
+    const hook = await settledQueue();
+    encodeMock.mockClear();
+
+    await act(async () => {
+      hook.result.current.cutOut(hook.result.current.items[0]);
+      await vi.advanceTimersByTimeAsync(300);
+    });
+
+    expect((encodeMock.mock.calls[0] as unknown[])[4]).toBe(true);
+  });
+
+  it("puts the failure on the row when matting fails", async () => {
+    const hook = await settledQueue();
+    matteMock.mockRejectedValueOnce(new Error("out of memory"));
+
+    await act(async () => {
+      hook.result.current.cutOut(hook.result.current.items[0]);
+      await vi.advanceTimersByTimeAsync(300);
+    });
+
+    expect(hook.result.current.items[0].status).toBe("error");
+    expect(hook.result.current.items[0].error).toBe("out of memory");
+  });
+
+  it("restores the original and encodes from it again", async () => {
+    const hook = await settledQueue();
+    await act(async () => {
+      hook.result.current.cutOut(hook.result.current.items[0]);
+      await vi.advanceTimersByTimeAsync(300);
+    });
+    encodeMock.mockClear();
+
+    await act(async () => {
+      hook.result.current.restoreBackground(hook.result.current.items[0]);
+      await vi.advanceTimersByTimeAsync(300);
+    });
+
+    expect(hook.result.current.items[0].cutout).toBeUndefined();
+    const [, encodedFrom] = encodeMock.mock.calls[0] as unknown[];
+    expect(encodedFrom).toBe(hook.result.current.items[0].file);
+  });
+
+  it("cancels in-flight matting when the queue is reset", async () => {
+    const hook = await settledQueue();
+    matteBumpGenerationMock.mockClear();
+
+    act(() => {
+      hook.result.current.cutOut(hook.result.current.items[0]);
+      hook.result.current.reset();
+    });
+
+    // This is the constraint reset() is supposed to implement: a reset
+    // bumps the matte generation, same as it already does for the encode
+    // client, so a real MatteClient rejects any pending matte() as
+    // StaleResult instead of letting it land later. The mock doesn't
+    // implement generation-based rejection itself, so pin the call the
+    // real client depends on directly, rather than only re-checking
+    // `items === []` — the reducer already emptied `items` on "reset"
+    // before this task existed, so that alone does not prove cancellation
+    // happened. (Verified: removing the `matteRef.current?.bumpGeneration()`
+    // line from reset() makes this assertion fail while the rest of the
+    // suite still passes.)
+    expect(matteBumpGenerationMock).toHaveBeenCalledTimes(1);
+    expect(hook.result.current.items).toEqual([]);
+  });
+
+  it("does not resurrect a row removed while its matte was in flight", async () => {
+    const hook = await settledQueue();
+    let resolveMatte: ((r: { blob: Blob; width: number; height: number }) => void) | undefined;
+    matteMock.mockImplementationOnce(
+      () => new Promise((resolve) => { resolveMatte = resolve; }),
+    );
+
+    act(() => {
+      hook.result.current.cutOut(hook.result.current.items[0]);
+    });
+    act(() => {
+      hook.result.current.removeItem(hook.result.current.items[0]);
+    });
+    expect(hook.result.current.items).toEqual([]);
+
+    encodeMock.mockClear();
+    await act(async () => {
+      resolveMatte?.({ blob: new Blob(["cut"]), width: 100, height: 100 });
+      await vi.advanceTimersByTimeAsync(300);
+    });
+
+    expect(hook.result.current.items).toEqual([]);
+    expect(encodeMock).not.toHaveBeenCalled();
   });
 });

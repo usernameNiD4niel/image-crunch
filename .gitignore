@@ -29,3 +29,7 @@ dist-ssr
 !.env.example
 
 *.tsbuildinfo
+
+# fetched model weights and spike fixtures — never committed
+public/models/
+public/spike-fixtures/

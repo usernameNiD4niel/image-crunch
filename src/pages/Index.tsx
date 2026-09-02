@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { Masthead } from "@/components/Masthead";
 import { Statement } from "@/components/Statement";
 import { DropZone, getImageDimensions } from "@/components/DropZone";
@@ -8,10 +8,30 @@ import { Editorial } from "@/components/Editorial";
 import { Notices } from "@/components/Notices";
 import { useQueue } from "@/hooks/useQueue";
 import { trackUrl } from "@/lib/engine/client";
+import { pickDevice, isModelPresent } from "@/lib/engine/matte/assets";
 import type { QueueItem } from "@/lib/engine/types";
 
 const Index = () => {
-  const { items, settings, totals, notices, pending, dispatch, downloadOne, downloadAll, removeItem, reset } = useQueue();
+  const {
+    items,
+    settings,
+    totals,
+    notices,
+    pending,
+    dispatch,
+    downloadOne,
+    downloadAll,
+    removeItem,
+    reset,
+    cutOut,
+    restoreBackground,
+  } = useQueue();
+  // Whether the one-off "this will download N MB" notice has been shown.
+  // Set ONLY once the model has actually been found: if the check said the
+  // weights are missing, nothing was announced and nothing has been
+  // downloaded, so the next press must run the check again rather than
+  // fall through into a worker that cannot load.
+  const [downloadAnnounced, setDownloadAnnounced] = useState(false);
   const working = items.filter((i) => i.status === "working").length;
   const errors = items.filter((i) => i.status === "error").length;
 
@@ -62,6 +82,37 @@ const Index = () => {
     [dispatch],
   );
 
+  const onCutOut = useCallback(
+    async (item: QueueItem) => {
+      if (!downloadAnnounced) {
+        const device = pickDevice();
+        // Re-checked on every press until it succeeds, in both directions:
+        // a deployment without weights must keep saying so rather than
+        // silently handing the second press to a worker that fails with a
+        // raw protobuf error, and a model deployed mid-session must still
+        // get its download notice.
+        if (!(await isModelPresent(device))) {
+          dispatch({
+            type: "notice",
+            message:
+              "Background removal is unavailable: the model was not deployed. Run `npm run fetch-model` and redeploy.",
+          });
+          return;
+        }
+        setDownloadAnnounced(true);
+        dispatch({
+          type: "notice",
+          message:
+            device === "webgpu"
+              ? "Downloading the background model — about 85 MB, once. It stays on your device."
+              : "This browser has no WebGPU, so background removal uses the slower fallback: about 43 MB to download, and a few seconds per image.",
+        });
+      }
+      cutOut(item);
+    },
+    [cutOut, dispatch, downloadAnnounced],
+  );
+
   return (
     <>
       <Masthead
@@ -83,7 +134,16 @@ const Index = () => {
           <DropZone onFiles={onFiles} />
         ) : (
           <>
-            <Queue items={items} pending={pending} totals={totals} onDownloadOne={downloadOne} onRemove={removeItem} />
+            <Queue
+              items={items}
+              pending={pending}
+              totals={totals}
+              onDownloadOne={downloadOne}
+              onRemove={removeItem}
+              onCutOut={onCutOut}
+              onRestore={restoreBackground}
+              format={settings.format}
+            />
             <DropZone onFiles={onFiles} compact />
             <Controls
               settings={settings}

@@ -10,16 +10,30 @@ interface CompareProps {
 
 /** One captioned pane. The caption is a real <figcaption>, not a loose row of
  *  text under an image, so each pane carries its own size and format with it. */
-function Pane({ src, alt, label, bytes, format }: {
+function Pane({ src, alt, label, bytes, format, checkerboard }: {
   src: string;
   alt: string;
   label: string;
   bytes: number;
   format: string;
+  checkerboard?: boolean;
 }) {
   return (
     <figure className="min-w-0">
-      <div className="aspect-video overflow-hidden border border-rule bg-paper">
+      <div
+        data-checkerboard={checkerboard ? "true" : undefined}
+        className="aspect-video overflow-hidden border border-rule bg-paper"
+        style={
+          checkerboard
+            ? {
+                backgroundImage:
+                  "linear-gradient(45deg,var(--paper-2) 25%,transparent 25%),linear-gradient(-45deg,var(--paper-2) 25%,transparent 25%),linear-gradient(45deg,transparent 75%,var(--paper-2) 75%),linear-gradient(-45deg,transparent 75%,var(--paper-2) 75%)",
+                backgroundSize: "16px 16px",
+                backgroundPosition: "0 0, 0 8px, 8px -8px, -8px 0",
+              }
+            : undefined
+        }
+      >
         <img src={src} alt={alt} className="h-full w-full object-contain" />
       </div>
       <figcaption className="data mt-2 flex flex-wrap items-baseline gap-x-2 text-[0.8125rem] text-ink-72">
@@ -60,6 +74,7 @@ export function Compare({ item, result }: CompareProps) {
             label="Compressed"
             bytes={result.size}
             format={formatLabel(result.mime)}
+            checkerboard
           />
         )}
         <Pane

@@ -1,5 +1,5 @@
 import type { QueueItem } from "@/lib/engine/types";
-import { currentResult, formatBytes, formatPercent, savingsPercent } from "@/lib/engine/plan";
+import { currentResult, formatBytes, formatPercent, isPassthrough, savingsPercent } from "@/lib/engine/plan";
 import { Item, ItemActions } from "@/components/ui/item";
 import { Spinner } from "@/components/ui/spinner";
 import { Compare } from "@/components/Compare";
@@ -11,9 +11,23 @@ interface QueueRowProps {
   onToggle: () => void;
   onDownload: () => void;
   onRemove: () => void;
+  onCutOut: () => void;
+  onRestore: () => void;
+  /** True when the queue's format is JPG and this row had to go elsewhere. */
+  formatSubstituted?: boolean;
 }
 
-export function QueueRow({ index, item, expanded, onToggle, onDownload, onRemove }: QueueRowProps) {
+export function QueueRow({
+  index,
+  item,
+  expanded,
+  onToggle,
+  onDownload,
+  onRemove,
+  onCutOut,
+  onRestore,
+  formatSubstituted,
+}: QueueRowProps) {
   // Not item.result: while a re-encode is in flight the row still holds the
   // previous run's bytes, and every figure derived from them describes
   // settings that are no longer on screen. currentResult withholds them for
@@ -80,6 +94,26 @@ export function QueueRow({ index, item, expanded, onToggle, onDownload, onRemove
         >
           {expanded ? "⌃" : "⌄"}
         </button>
+        {/* Passthrough files (svg, ico) are never decoded, so a cut-out on
+            one would mean nothing — and encodeOne's passthrough branch
+            re-labels its output bytes with the source mime, so the file
+            handed out would silently be the wrong format under the source
+            extension. */}
+        {!isPassthrough(item.source.type) && (
+          <button
+            type="button"
+            onClick={item.cutout ? onRestore : onCutOut}
+            disabled={item.matting}
+            aria-label={
+              item.cutout
+                ? `Restore background from ${item.source.name}`
+                : `Cut out background from ${item.source.name}`
+            }
+            className="focus-visible:ring-0 disabled:text-ink-58"
+          >
+            ✂
+          </button>
+        )}
         <button
           type="button"
           onClick={onDownload}
@@ -111,6 +145,19 @@ export function QueueRow({ index, item, expanded, onToggle, onDownload, onRemove
 
       {item.status === "error" && (
         <p className="data col-span-11 col-start-2 text-[0.8125rem] text-ink-72">{item.error}</p>
+      )}
+
+      {item.matting && (
+        <p className="data col-span-11 col-start-2 text-[0.8125rem] text-ink-72">
+          removing background…
+        </p>
+      )}
+
+      {item.cutout && !item.matting && (
+        <p className="data col-span-11 col-start-2 text-[0.8125rem] text-ink-72">
+          cut out
+          {formatSubstituted && " · output as WEBP (JPG has no transparency)"}
+        </p>
       )}
 
       {/* Deliberately item.result, not `result`: the compare panel holds

@@ -1,6 +1,6 @@
 import { useState } from "react";
-import type { QueueItem } from "@/lib/engine/types";
-import { formatBytes, formatPercent } from "@/lib/engine/plan";
+import type { OutputFormat, QueueItem } from "@/lib/engine/types";
+import { formatBytes, formatPercent, resolveOutputFormat } from "@/lib/engine/plan";
 import { QueueRow } from "@/components/QueueRow";
 
 interface QueueProps {
@@ -10,9 +10,19 @@ interface QueueProps {
   totals: { count: number; input: number; output: number; percent: number };
   onDownloadOne: (item: QueueItem) => void;
   onRemove: (item: QueueItem) => void;
+  onCutOut: (item: QueueItem) => void;
+  onRestore: (item: QueueItem) => void;
+  /**
+   * The queue's format setting. Held rather than a precomputed boolean
+   * because whether a cut-out forces a different output format is a
+   * per-ROW question: KEEP on a .jpg substitutes WebP exactly as an
+   * explicit JPG choice does, and a mixed queue answers differently row
+   * by row.
+   */
+  format: OutputFormat;
 }
 
-export function Queue({ items, pending, totals, onDownloadOne, onRemove }: QueueProps) {
+export function Queue({ items, pending, totals, onDownloadOne, onRemove, onCutOut, onRestore, format }: QueueProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   return (
@@ -36,6 +46,18 @@ export function Queue({ items, pending, totals, onDownloadOne, onRemove }: Queue
             onToggle={() => setExpandedId(expandedId === item.id ? null : item.id)}
             onDownload={() => onDownloadOne(item)}
             onRemove={() => onRemove(item)}
+            onCutOut={() => onCutOut(item)}
+            onRestore={() => onRestore(item)}
+            // Asked of the resolver, not of the raw setting: it is the
+            // resolver that decides a cut-out cannot be a JPEG, and it
+            // does so for FORMAT=KEEP on a .jpg source just as much as
+            // for an explicit JPG. Comparing its answer with and without
+            // alpha is the only thing that stays true as that rule moves.
+            formatSubstituted={
+              !!item.cutout &&
+              resolveOutputFormat(item.source.type, format, false) !==
+                resolveOutputFormat(item.source.type, format, true)
+            }
           />
         ))}
       </ul>

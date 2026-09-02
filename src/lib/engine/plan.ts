@@ -42,11 +42,21 @@ export function isPassthrough(type: string): boolean {
   return PASSTHROUGH_TYPES.includes(type);
 }
 
-export function resolveOutputFormat(sourceType: string, format: OutputFormat): string {
+export function resolveOutputFormat(
+  sourceType: string,
+  format: OutputFormat,
+  needsAlpha = false,
+): string {
   const source = sourceType === "image/jpg" ? "image/jpeg" : sourceType;
   if (isPassthrough(source)) return source;
-  if (format === "keep") return source === "image/gif" ? "image/png" : source;
-  return format;
+
+  const resolved = format === "keep" ? (source === "image/gif" ? "image/png" : source) : format;
+
+  // A cut-out has transparency to lose. WebP rather than PNG because it
+  // carries alpha at a fraction of the size, and this app exists to make
+  // files smaller.
+  if (needsAlpha && resolved === "image/jpeg") return "image/webp";
+  return resolved;
 }
 
 export function targetDimensions(
@@ -71,8 +81,17 @@ export function savingsPercent(originalBytes: number, outputBytes: number): numb
   return ((originalBytes - outputBytes) / originalBytes) * 100;
 }
 
-export function shouldKeepOriginal(originalBytes: number, outputBytes: number): boolean {
-  return outputBytes >= originalBytes;
+/**
+ * Whether re-encoding was pointless — the output is no smaller than what
+ * went in.
+ *
+ * `inputBytes`, not "original": on a cut-out row the encode's input is the
+ * matte's PNG intermediate, not the dropped file. This function only ever
+ * compares two sizes; deciding whether the input is something the app may
+ * hand back as "kept" is encodeOne's job, and it refuses to for a cut row.
+ */
+export function shouldKeepOriginal(inputBytes: number, outputBytes: number): boolean {
+  return outputBytes >= inputBytes;
 }
 
 export function outputFilename(sourceName: string, mime: string, taken: Set<string>): string {

@@ -50,6 +50,28 @@ describe("resolveOutputFormat", () => {
   });
 });
 
+describe("resolveOutputFormat when the image needs transparency", () => {
+  // JPG cannot carry an alpha channel, so a cut-out saved as JPG would
+  // silently composite onto black — the one outcome worse than refusing.
+  it("substitutes WebP for JPG", () => {
+    expect(resolveOutputFormat("image/png", "image/jpeg", true)).toBe("image/webp");
+  });
+
+  it("substitutes WebP when 'keep' would have resolved to JPG", () => {
+    expect(resolveOutputFormat("image/jpeg", "keep", true)).toBe("image/webp");
+  });
+
+  it("leaves the alpha-capable formats alone", () => {
+    expect(resolveOutputFormat("image/png", "image/png", true)).toBe("image/png");
+    expect(resolveOutputFormat("image/png", "image/webp", true)).toBe("image/webp");
+    expect(resolveOutputFormat("image/png", "image/x-icon", true)).toBe("image/x-icon");
+  });
+
+  it("changes nothing when transparency is not needed", () => {
+    expect(resolveOutputFormat("image/png", "image/jpeg", false)).toBe("image/jpeg");
+  });
+});
+
 describe("targetDimensions", () => {
   it("returns the source size when resize is none", () => {
     expect(targetDimensions(3840, 2160, "none")).toEqual({ width: 3840, height: 2160 });

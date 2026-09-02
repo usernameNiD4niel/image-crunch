@@ -132,4 +132,12 @@ describe("Compare", () => {
     expect(container.querySelector('input[type="range"]')).toBeNull();
     expect(screen.queryByLabelText("Divider")).toBeNull();
   });
+
+  // A cut-out on a white pane is indistinguishable from a white background.
+  it("puts a checkerboard behind the compressed pane so transparency reads as transparency", () => {
+    render(<Compare item={item()} result={result()} />);
+
+    const pane = screen.getByAltText("Compressed photo.png").parentElement;
+    expect(pane?.getAttribute("data-checkerboard")).toBe("true");
+  });
 });
